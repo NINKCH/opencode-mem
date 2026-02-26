@@ -2,7 +2,7 @@
 
 OpenCode plugin for persistent local memory - **fully offline, no API keys required**.
 
-Your agent remembers what you tell it - across sessions, across projects.
+Your AI agent remembers what you tell it - across sessions, across projects.
 
 ## Features
 
@@ -12,88 +12,36 @@ Your agent remembers what you tell it - across sessions, across projects.
 - **Semantic Search** - Find relevant memories using natural language
 - **Cross-Session Memory** - Agent remembers across conversations
 - **User & Project Scopes** - Separate memories for different contexts
-- **Privacy First** - Data never leaves your machine
+- **Multi-language** - Supports 100+ languages including Chinese
 
 ## Installation
 
-### Option 1: Install from GitHub (Recommended)
-
 ```bash
+# Install plugin
 bunx github:NINKCH/opencode-mem install
-```
 
-Then initialize:
-
-```bash
+# Initialize storage
 bunx github:NINKCH/opencode-mem init
-```
 
-Replace `NINKCH` with your GitHub username.
-
-Then initialize:
-
-```bash
-bunx github:NINKCH/opencode-mem init
-```
-
-Restart OpenCode:
-
-```bash
+# Restart OpenCode
 opencode -c
-```
-
-### Option 2: Install from npm
-
-```bash
-bunx opencode-mem@latest install
-```
-
-Then initialize:
-
-```bash
-bunx opencode-mem@latest init
-```
-
-### Option 3: Manual Install (for development)
-
-```bash
-# Clone the repository
-git clone https://github.com/NINKCH/opencode-mem.git
-cd opencode-mem
-
-# Install dependencies
-bun install --ignore-scripts
-
-# Build
-bun run build
-
-# Link locally
-bun link
-
-# Install to OpenCode
-opencode-mem install
-opencode-mem init
-```
-
-Or add directly to `~/.config/opencode/opencode.jsonc`:
-
-```jsonc
-{
-  "plugin": ["file:///path/to/opencode-mem"]
-}
 ```
 
 ## Usage
 
-### In Conversation
+### Automatic Memory Injection
 
-The plugin automatically injects relevant context when you start a new conversation:
+When you start a new conversation, the plugin automatically injects relevant context:
 
 ```
 User: Help me add a new API endpoint
 
-[Agent receives automatically]:
+[Agent receives]:
 [LOCAL-MEMORY]
+
+User Profile:
+- Prefers concise responses
+- Expert in TypeScript
 
 Project Knowledge:
 - [100%] Uses Bun runtime
@@ -107,27 +55,26 @@ Relevant Memories:
 
 ### Saving Memories
 
-Use keywords like "remember" to trigger automatic memory saving:
+Use keywords to trigger automatic saving:
 
 ```
 User: Remember that this project uses bun instead of npm
 Agent: [Automatically saves to project memory]
 ```
 
-Supported keywords: `remember`, `memorize`, `save this`, `note this`, `keep in mind`, `don't forget`, `learn this`, `记住`, `记下`, `别忘了`
+**Supported keywords:** `remember`, `memorize`, `save this`, `note this`, `keep in mind`, `don't forget`, `learn this`, `记住`, `记下`, `别忘了`
 
-### Using the Tool
+### Tool Commands
 
-The agent has access to the `local-memory` tool:
+The agent can use the `local-memory` tool:
 
 | Mode | Args | Description |
 |------|------|-------------|
-| `add` | `content`, `type?`, `scope?` | Store memory |
+| `add` | `content`, `type?`, `scope?` | Store a new memory |
 | `search` | `query`, `scope?` | Search memories |
-| `list` | `scope?`, `limit?` | List memories |
-| `forget` | `memoryId` | Delete memory |
+| `list` | `scope?`, `limit?` | List all memories |
+| `forget` | `memoryId` | Delete a memory |
 | `profile` | | View user profile |
-| `help` | | Show usage guide |
 
 **Scopes:** `user` (cross-project), `project` (default)
 
@@ -136,33 +83,16 @@ The agent has access to the `local-memory` tool:
 ## CLI Commands
 
 ```bash
-# Install plugin
-opencode-mem install
-
-# Initialize (download model)
-opencode-mem init
-
-# Show status
-opencode-mem status
-
-# List memories
-opencode-mem memories list --scope project
-
-# Search memories
-opencode-mem memories search "build error"
-
-# Add memory
-opencode-mem memories add "This project uses Tailwind CSS"
-
-# Delete memory
-opencode-mem memories forget <id>
-
-# Export/Import
-opencode-mem export memories.json
-opencode-mem import memories.json
-
-# View logs
-opencode-mem logs
+opencode-mem install              # Install plugin
+opencode-mem init                 # Initialize storage
+opencode-mem status               # Show status
+opencode-mem memories list        # List memories
+opencode-mem memories search "x"  # Search memories
+opencode-mem memories add "text"  # Add memory manually
+opencode-mem memories forget <id> # Delete memory
+opencode-mem export backup.json   # Export memories
+opencode-mem import backup.json   # Import memories
+opencode-mem logs                 # View recent logs
 ```
 
 ## Configuration
@@ -177,8 +107,7 @@ Create `~/.config/opencode/memory.json`:
   "maxProjectMemories": 10,
   "maxProfileItems": 5,
   "injectProfile": true,
-  "containerTagPrefix": "opencode-mem",
-  "keywordPatterns": ["记住", "记下来"],
+  "keywordPatterns": ["记住", "save this"],
   "compactionThreshold": 0.8
 }
 ```
@@ -192,16 +121,15 @@ Create `~/.config/opencode/memory.json`:
 
 ### Embedding Model
 
-- **Model**: `Xenova/paraphrase-multilingual-MiniLM-L12-v2`
-- **Size**: ~420MB (downloaded once, cached locally)
-- **Dimensions**: 384
-- **Languages**: 100+ languages including Chinese, English, Japanese
+- **Model:** `Xenova/paraphrase-multilingual-MiniLM-L12-v2`
+- **Size:** ~420MB (downloaded once, cached locally)
+- **Dimensions:** 384
+- **Languages:** 100+ languages including Chinese, English, Japanese
 
 ### Storage
 
-- **Vector Store**: SQLite + in-memory cosine similarity
-- **Metadata**: SQLite database
-- **Location**: `~/.local/share/opencode-memory/`
+- **Vector Store:** SQLite + in-memory cosine similarity
+- **Location:** `~/.local/share/opencode-memory/`
 
 ### Performance
 
@@ -212,63 +140,30 @@ Create `~/.config/opencode/memory.json`:
 | Single embedding | ~50-100ms |
 | Memory search | ~10-50ms |
 
+## Requirements
+
+- Node.js 18+ or Bun
+- ~500MB disk space (for embedding model)
+
 ## Comparison with opencode-supermemory
 
 | Feature | opencode-supermemory | opencode-mem |
 |---------|---------------------|--------------|
-| API Key | Required | Not required |
-| Data Storage | Cloud | Local |
-| Cost | Paid | Free |
-| Privacy | Data on cloud | 100% local |
-| Offline | No | Yes |
-| Model | Cloud embedding | Local embedding |
+| API Key | Required | **Not required** |
+| Data Storage | Cloud | **Local** |
+| Cost | Paid | **Free** |
+| Privacy | Data on cloud | **100% local** |
+| Offline | No | **Yes** |
+| Model | Cloud embedding | **Local embedding** |
 
 ## Development
 
 ```bash
-# Clone
 git clone https://github.com/NINKCH/opencode-mem.git
 cd opencode-mem
-
-# Install dependencies (use --ignore-scripts to skip native builds)
 bun install --ignore-scripts
-
-# Build
 bun run build
-
-# Typecheck
-bun run typecheck
 ```
-
-## Logs
-
-```bash
-# View logs
-tail -f ~/.local/share/opencode-memory/opencode-mem.log
-
-# Or use the CLI
-opencode-mem logs
-```
-
-## Publishing to npm
-
-```bash
-# Build
-bun run build
-
-# Publish
-npm publish
-```
-
-After publishing, users can install with:
-
-```bash
-bunx opencode-mem@latest install
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
