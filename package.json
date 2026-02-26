@@ -1,0 +1,62 @@
+{
+  "name": "opencode-mem",
+  "version": "1.0.0",
+  "description": "OpenCode plugin for persistent local memory - fully offline, no API keys required",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "opencode-mem": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun build ./src/cli.ts --outfile ./dist/cli.js --target node && tsc --emitDeclarationOnly",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "memory",
+    "local",
+    "offline",
+    "ai",
+    "coding-agent",
+    "rag",
+    "embeddings",
+    "persistent-memory"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NINKCH/opencode-mem"
+  },
+  "bugs": {
+    "url": "https://github.com/NINKCH/opencode-mem/issues"
+  },
+  "homepage": "https://github.com/NINKCH/opencode-mem#readme",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.0.162",
+    "@xenova/transformers": "^2.17.0",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/sql.js": "^1.4.9",
+    "typescript": "^5.7.3"
+  },
+  "opencode": {
+    "type": "plugin",
+    "hooks": [
+      "chat.message",
+      "event"
+    ]
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
