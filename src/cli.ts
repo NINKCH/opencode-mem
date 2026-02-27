@@ -169,11 +169,12 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     if (!existsSync(DATA_DIR)) {
       mkdirSync(DATA_DIR, { recursive: true });
     }
-
     console.log(`  ✓ Data directory created: ${DATA_DIR}`);
-    console.log(`\n  The embedding model will be downloaded automatically on first use.`);
-    console.log(`  Model: Xenova/paraphrase-multilingual-MiniLM-L12-v2 (~420MB)\n`);
-    console.log(`  ✓ Initialization complete!\n`);
+    
+    // 显示模型下载提示
+    console.log(`\n  Embedding model: Xenova/paraphrase-multilingual-MiniLM-L12-v2`);
+    console.log(`  Size: ~420MB (downloaded automatically on first use)`);
+    console.log(`\n  ✓ Initialization complete!\n`);
     console.log(`  Restart OpenCode to use local memory:`);
     console.log(`    opencode -c\n`);
   },
