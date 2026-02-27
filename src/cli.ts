@@ -12,10 +12,49 @@ const DATA_DIR = join(homedir(), ".local", "share", "opencode-memory");
 const PLUGIN_NAME = "opencode-mem";
 
 function stripJsoncComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "")
-    .trim();
+  let result = "";
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (escape) {
+      result += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      result += char;
+      escape = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === "/" && nextChar === "/") {
+        while (i < content.length && content[i] !== "\n") i++;
+        continue;
+      }
+      if (char === "/" && nextChar === "*") {
+        i += 2;
+        while (i < content.length && !(content[i] === "*" && content[i + 1] === "/")) i++;
+        i++;
+        continue;
+      }
+    }
+
+    result += char;
+  }
+
+  return result.trim();
 }
 
 function readJsonc(path: string): any {
@@ -65,38 +104,62 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     }
 
     const configPath = getOpenCodeConfigPath();
-    let config: any = {};
 
     if (configPath && existsSync(configPath)) {
+      let config: any;
+      
       try {
         config = readJsonc(configPath);
       } catch (e) {
-        console.log("  Warning: Could not parse existing config");
+        console.log(`  ✗ Failed to parse config: ${configPath}`);
+        console.log(`  Error: ${e instanceof Error ? e.message : String(e)}`);
+        console.log(`\n  Please add manually to your config:`);
+        console.log(`    "plugin": ["${PLUGIN_NAME}"]\n`);
+        return;
+      }
+
+      if (config.plugin?.includes(PLUGIN_NAME)) {
+        console.log(`  ✓ ${PLUGIN_NAME} is already installed\n`);
+        return;
+      }
+
+      if (!config.plugin) {
+        config.plugin = [];
+      }
+      if (!Array.isArray(config.plugin)) {
+        config.plugin = [config.plugin];
+      }
+      config.plugin.push(PLUGIN_NAME);
+
+      try {
+        writeJson(configPath, config);
+        console.log(`  ✓ Plugin registered in ${configPath}`);
+      } catch (e) {
+        console.log(`  ✗ Failed to write config`);
+        console.log(`\n  Please add manually to ${configPath}:`);
+        console.log(`    "plugin": ["${PLUGIN_NAME}"]\n`);
+        return;
+      }
+    } else {
+      const config = { plugin: [PLUGIN_NAME] };
+      try {
+        writeJson(OPENCODE_CONFIG_JSON, config);
+        console.log(`  ✓ Created config at ${OPENCODE_CONFIG_JSON}`);
+      } catch (e) {
+        console.log(`  ✗ Failed to create config`);
+        console.log(`\n  Please create ${OPENCODE_CONFIG_JSON} with:`);
+        console.log(`    { "plugin": ["${PLUGIN_NAME}"] }\n`);
+        return;
       }
     }
 
-    if (!config.plugin) {
-      config.plugin = [];
+    if (!existsSync(DATA_DIR)) {
+      mkdirSync(DATA_DIR, { recursive: true });
     }
+    console.log(`  ✓ Created data directory: ${DATA_DIR}`);
 
-    if (!Array.isArray(config.plugin)) {
-      config.plugin = [config.plugin];
-    }
-
-    if (config.plugin.includes(PLUGIN_NAME)) {
-      console.log(`  ✓ ${PLUGIN_NAME} is already installed\n`);
-      return;
-    }
-
-    config.plugin.push(PLUGIN_NAME);
-
-    const targetPath = configPath || OPENCODE_CONFIG_JSON;
-    writeJson(targetPath, config);
-
-    console.log(`  ✓ Registered plugin in ${targetPath}`);
-    console.log(`  ✓ Created data directory: ${DATA_DIR}\n`);
-    console.log(`  Next steps:`);
-    console.log(`  1. Run '${PLUGIN_NAME} init' to download the embedding model`);
+    console.log(`\n  Next steps:`);
+    console.log(`  1. Run '${PLUGIN_NAME} init' to initialize storage`);
     console.log(`  2. Restart OpenCode with: opencode -c\n`);
   },
 

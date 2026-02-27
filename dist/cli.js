@@ -34670,7 +34670,45 @@ var OPENCODE_CONFIG_JSON = join4(CONFIG_DIR, "opencode.json");
 var DATA_DIR = join4(homedir4(), ".local", "share", "opencode-memory");
 var PLUGIN_NAME = "opencode-mem";
 function stripJsoncComments(content) {
-  return content.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").trim();
+  let result = "";
+  let inString = false;
+  let escape = false;
+  for (let i2 = 0;i2 < content.length; i2++) {
+    const char = content[i2];
+    const nextChar = content[i2 + 1];
+    if (escape) {
+      result += char;
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      result += char;
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      continue;
+    }
+    if (!inString) {
+      if (char === "/" && nextChar === "/") {
+        while (i2 < content.length && content[i2] !== `
+`)
+          i2++;
+        continue;
+      }
+      if (char === "/" && nextChar === "*") {
+        i2 += 2;
+        while (i2 < content.length && !(content[i2] === "*" && content[i2 + 1] === "/"))
+          i2++;
+        i2++;
+        continue;
+      }
+    }
+    result += char;
+  }
+  return result.trim();
 }
 function readJsonc(path3) {
   const content = readFileSync2(path3, "utf-8");
@@ -34717,33 +34755,63 @@ var commands = {
       mkdirSync4(CONFIG_DIR, { recursive: true });
     }
     const configPath = getOpenCodeConfigPath();
-    let config = {};
     if (configPath && existsSync4(configPath)) {
+      let config;
       try {
         config = readJsonc(configPath);
       } catch (e) {
-        console.log("  Warning: Could not parse existing config");
+        console.log(`  ✗ Failed to parse config: ${configPath}`);
+        console.log(`  Error: ${e instanceof Error ? e.message : String(e)}`);
+        console.log(`
+  Please add manually to your config:`);
+        console.log(`    "plugin": ["${PLUGIN_NAME}"]
+`);
+        return;
+      }
+      if (config.plugin?.includes(PLUGIN_NAME)) {
+        console.log(`  ✓ ${PLUGIN_NAME} is already installed
+`);
+        return;
+      }
+      if (!config.plugin) {
+        config.plugin = [];
+      }
+      if (!Array.isArray(config.plugin)) {
+        config.plugin = [config.plugin];
+      }
+      config.plugin.push(PLUGIN_NAME);
+      try {
+        writeJson(configPath, config);
+        console.log(`  ✓ Plugin registered in ${configPath}`);
+      } catch (e) {
+        console.log(`  ✗ Failed to write config`);
+        console.log(`
+  Please add manually to ${configPath}:`);
+        console.log(`    "plugin": ["${PLUGIN_NAME}"]
+`);
+        return;
+      }
+    } else {
+      const config = { plugin: [PLUGIN_NAME] };
+      try {
+        writeJson(OPENCODE_CONFIG_JSON, config);
+        console.log(`  ✓ Created config at ${OPENCODE_CONFIG_JSON}`);
+      } catch (e) {
+        console.log(`  ✗ Failed to create config`);
+        console.log(`
+  Please create ${OPENCODE_CONFIG_JSON} with:`);
+        console.log(`    { "plugin": ["${PLUGIN_NAME}"] }
+`);
+        return;
       }
     }
-    if (!config.plugin) {
-      config.plugin = [];
+    if (!existsSync4(DATA_DIR)) {
+      mkdirSync4(DATA_DIR, { recursive: true });
     }
-    if (!Array.isArray(config.plugin)) {
-      config.plugin = [config.plugin];
-    }
-    if (config.plugin.includes(PLUGIN_NAME)) {
-      console.log(`  ✓ ${PLUGIN_NAME} is already installed
-`);
-      return;
-    }
-    config.plugin.push(PLUGIN_NAME);
-    const targetPath = configPath || OPENCODE_CONFIG_JSON;
-    writeJson(targetPath, config);
-    console.log(`  ✓ Registered plugin in ${targetPath}`);
-    console.log(`  ✓ Created data directory: ${DATA_DIR}
-`);
-    console.log(`  Next steps:`);
-    console.log(`  1. Run '${PLUGIN_NAME} init' to download the embedding model`);
+    console.log(`  ✓ Created data directory: ${DATA_DIR}`);
+    console.log(`
+  Next steps:`);
+    console.log(`  1. Run '${PLUGIN_NAME} init' to initialize storage`);
     console.log(`  2. Restart OpenCode with: opencode -c
 `);
   },
