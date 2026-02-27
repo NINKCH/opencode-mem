@@ -10,7 +10,7 @@ const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const OPENCODE_CONFIG = join(CONFIG_DIR, "opencode.jsonc");
 const OPENCODE_CONFIG_JSON = join(CONFIG_DIR, "opencode.json");
 const DATA_DIR = join(homedir(), ".local", "share", "opencode-memory");
-const PLUGIN_NAME = "opencode-mem";
+const PLUGIN_NAME = "@ninkch/opencode-mem";
 
 function stripJsoncComments(content: string): string {
   let result = "";
