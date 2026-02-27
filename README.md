@@ -15,7 +15,7 @@ Your AI agent remembers what you tell it - across sessions, across projects.
 
 ## Installation
 
-### Option 1: Install from GitHub (Recommended)
+### Option 1: Install from GitHub
 
 ```bash
 bunx github:NINKCH/opencode-mem install
