@@ -214,13 +214,22 @@ export class LocalMemoryStore implements MemoryStore {
     return results.slice(0, limit);
   }
 
-  async listMemories(containerTag: string, limit = 20): Promise<Memory[]> {
+  async listMemories(containerTag: string, limit = 20, additionalTags?: string[]): Promise<Memory[]> {
     await this.initDatabase();
 
-    const result = this.db.exec(
-      `SELECT * FROM memories WHERE container_tag = ? ORDER BY created_at DESC LIMIT ?`,
-      [containerTag, limit]
-    );
+    let query: string;
+    let params: any[];
+
+    if (additionalTags && additionalTags.length > 0) {
+      const placeholders = additionalTags.map(() => "?").join(", ");
+      query = `SELECT * FROM memories WHERE container_tag = ? OR container_tag IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`;
+      params = [containerTag, ...additionalTags, Number(limit)];
+    } else {
+      query = `SELECT * FROM memories WHERE container_tag = ? ORDER BY created_at DESC LIMIT ?`;
+      params = [containerTag, Number(limit)];
+    }
+
+    const result = this.db.exec(query, params);
 
     if (result.length === 0) return [];
 

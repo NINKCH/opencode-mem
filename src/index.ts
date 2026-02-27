@@ -133,7 +133,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
               threshold: CONFIG.similarityThreshold,
               limit: CONFIG.maxMemories,
             }),
-            store.listMemories(tags.project, CONFIG.maxProjectMemories),
+            store.listMemories(tags.project, CONFIG.maxProjectMemories, ["opencode-mem_project_default", "mem_project_default"]),
           ]);
 
           const projectMemories: MemorySearchResult[] = projectMemoriesList.map((m) => ({
@@ -377,8 +377,11 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
                 const scope = args.scope || "project";
                 const limit = args.limit || 20;
                 const containerTag = scope === "user" ? tags.user : tags.project;
+                const oldTags = scope === "user" 
+                  ? ["opencode-mem_user_default", "mem_user_default"]
+                  : ["opencode-mem_project_default", "mem_project_default"];
 
-                const memories = await store.listMemories(containerTag, limit);
+                const memories = await store.listMemories(containerTag, limit, oldTags);
 
                 return JSON.stringify({
                   success: true,

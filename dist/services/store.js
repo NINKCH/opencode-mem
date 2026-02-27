@@ -178,9 +178,20 @@ export class LocalMemoryStore {
         results.sort((a, b) => b.similarity - a.similarity);
         return results.slice(0, limit);
     }
-    async listMemories(containerTag, limit = 20) {
+    async listMemories(containerTag, limit = 20, additionalTags) {
         await this.initDatabase();
-        const result = this.db.exec(`SELECT * FROM memories WHERE container_tag = ? ORDER BY created_at DESC LIMIT ?`, [containerTag, limit]);
+        let query;
+        let params;
+        if (additionalTags && additionalTags.length > 0) {
+            const placeholders = additionalTags.map(() => "?").join(", ");
+            query = `SELECT * FROM memories WHERE container_tag = ? OR container_tag IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`;
+            params = [containerTag, ...additionalTags, Number(limit)];
+        }
+        else {
+            query = `SELECT * FROM memories WHERE container_tag = ? ORDER BY created_at DESC LIMIT ?`;
+            params = [containerTag, Number(limit)];
+        }
+        const result = this.db.exec(query, params);
         if (result.length === 0)
             return [];
         const columns = result[0].columns;

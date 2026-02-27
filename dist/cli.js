@@ -240,7 +240,10 @@ const commands = {
             const limit = args.includes("--limit") ? parseInt(args[args.indexOf("--limit") + 1]) : 20;
             const tags = getTags(process.cwd());
             const tag = scope === "user" ? tags.user : tags.project;
-            const memories = await store.listMemories(tag, limit);
+            const oldTags = scope === "user"
+                ? ["opencode-mem_user_default", "mem_user_default"]
+                : ["opencode-mem_project_default", "mem_project_default"];
+            const memories = await store.listMemories(tag, limit, oldTags);
             console.log(`\n  Memories (${scope || "all"}): ${memories.length}\n`);
             if (memories.length === 0) {
                 console.log("  No memories found.\n");
@@ -329,7 +332,8 @@ const commands = {
             memories: [],
         };
         const tags = getTags(process.cwd());
-        const allMemories = await store.listMemories(tags.project, 1000);
+        const oldProjectTags = ["opencode-mem_project_default", "mem_project_default"];
+        const allMemories = await store.listMemories(tags.project, 1000, oldProjectTags);
         memories.memories = allMemories;
         writeFileSync(outputPath, JSON.stringify(memories, null, 2), "utf-8");
         console.log(`\n  ✓ Exported ${allMemories.length} memories to ${outputPath}\n`);
