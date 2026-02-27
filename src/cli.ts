@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { getTags } from "./services/tags.js";
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const OPENCODE_CONFIG = join(CONFIG_DIR, "opencode.jsonc");
@@ -268,7 +269,8 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
       const scope = args.includes("--scope") ? args[args.indexOf("--scope") + 1] : undefined;
       const limit = args.includes("--limit") ? parseInt(args[args.indexOf("--limit") + 1]) : 20;
 
-      const tag = scope === "user" ? `${PLUGIN_NAME}_user_default` : `${PLUGIN_NAME}_project_default`;
+      const tags = getTags(process.cwd());
+      const tag = scope === "user" ? tags.user : tags.project;
       const memories = await store.listMemories(tag, limit);
 
       console.log(`\n  Memories (${scope || "all"}): ${memories.length}\n`);
@@ -290,8 +292,8 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         return;
       }
 
-      const tag = `${PLUGIN_NAME}_project_default`;
-      const results = await store.searchMemories(query, tag, { limit: 10 });
+      const tags = getTags(process.cwd());
+      const results = await store.searchMemories(query, tags.project, { limit: 10 });
 
       console.log(`\n  Search results for "${query}": ${results.length}\n`);
 
@@ -307,12 +309,12 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         return;
       }
 
-      const tag = `${PLUGIN_NAME}_project_default`;
+      const tags = getTags(process.cwd());
       const memory = await store.addMemory({
         content,
         scope: "project",
         type: "learned-pattern",
-        containerTag: tag,
+        containerTag: tags.project,
       });
 
       console.log(`\n  ✓ Memory added with ID: ${memory.id}\n`);
@@ -365,8 +367,8 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
       memories: [] as any[],
     };
 
-    const tag = `${PLUGIN_NAME}_project_default`;
-    const allMemories = await store.listMemories(tag, 1000);
+    const tags = getTags(process.cwd());
+    const allMemories = await store.listMemories(tags.project, 1000);
     memories.memories = allMemories;
 
     writeFileSync(outputPath, JSON.stringify(memories, null, 2), "utf-8");
@@ -386,14 +388,14 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const store = getStore();
 
     let imported = 0;
-    const tag = `${PLUGIN_NAME}_project_default`;
+    const tags = getTags(process.cwd());
 
     for (const mem of data.memories || []) {
       await store.addMemory({
         content: mem.content,
         scope: mem.scope || "project",
         type: mem.type || "learned-pattern",
-        containerTag: tag,
+        containerTag: tags.project,
       });
       imported++;
     }

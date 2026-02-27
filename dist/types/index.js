@@ -5,7 +5,7 @@ export const DEFAULT_CONFIG = {
     maxProjectMemories: 10,
     maxProfileItems: 5,
     injectProfile: true,
-    containerTagPrefix: "opencode-mem",
+    containerTagPrefix: "mem",
     filterPrompt: "You are a stateful coding agent. Remember all information including user preferences, tech stack, behaviors, and workflows.",
     keywordPatterns: [
         "remember",
