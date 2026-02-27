@@ -15,15 +15,7 @@ Your AI agent remembers what you tell it - across sessions, across projects.
 
 ## Installation
 
-### Option 1: Install from GitHub
-
-```bash
-bunx github:NINKCH/opencode-mem install
-bunx github:NINKCH/opencode-mem init
-opencode -c
-```
-
-### Option 2: Install from npm
+### Option 1: Install from npm
 
 ```bash
 npm install -g @ninkch/opencode-mem
@@ -32,7 +24,7 @@ opencode-mem init
 opencode -c
 ```
 
-### Option 3: Local Clone
+### Option 2: Local Clone
 
 ```bash
 git clone https://github.com/NINKCH/opencode-mem.git
@@ -104,6 +96,7 @@ opencode-mem import backup.json   # Import memories
 ```
 
 ## Configuration
+
 Create `~/.config/opencode/memory.json`:
 
 ```json
@@ -115,10 +108,12 @@ Create `~/.config/opencode/memory.json`:
 ```
 
 ## Requirements
+
 - Node.js 18+ or Bun
 - ~500MB disk space (for embedding model)
 
 ## Comparison
+
 | Feature | opencode-supermemory | @ninkch/opencode-mem |
 |---------|---------------------|----------------------|
 | API Key | Required | **Not required** |
@@ -127,6 +122,7 @@ Create `~/.config/opencode/memory.json`:
 | Offline | No | **Yes** |
 
 ## Development
+
 ```bash
 git clone https://github.com/NINKCH/opencode-mem.git
 cd opencode-mem
@@ -136,4 +132,5 @@ npm run typecheck
 ```
 
 ## License
+
 MIT
