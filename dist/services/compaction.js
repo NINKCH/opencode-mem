@@ -1,6 +1,7 @@
 import { getStore } from "./store.js";
+import { getProjectName } from "./tags.js";
 import { log } from "./logger.js";
-export function createCompactionHook(ctx, tags, options) {
+export function createCompactionHook(ctx, tags, directory, options) {
     const processedEvents = new Set();
     return {
         event: async (input) => {
@@ -35,6 +36,8 @@ export function createCompactionHook(ctx, tags, options) {
                         scope: "project",
                         type: "conversation",
                         containerTag: tags.project,
+                        projectName: getProjectName(directory),
+                        projectPath: directory,
                     });
                     log("Session summary saved", { sessionId });
                 }

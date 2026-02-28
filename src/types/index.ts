@@ -52,6 +52,7 @@ export interface MemoryStore {
     options?: { threshold?: number; limit?: number }
   ): Promise<MemorySearchResult[]>;
   listMemories(containerTag: string, limit?: number, additionalTags?: string[]): Promise<Memory[]>;
+  listAllMemories(limit?: number): Promise<Memory[]>;
   deleteMemory(id: string): Promise<boolean>;
   clearMemories(containerTag?: string): Promise<number>;
   getStats(): Promise<{ total: number; user: number; project: number }>;

@@ -1,5 +1,5 @@
 import { getStore } from "./store.js";
-import type { Tags } from "./tags.js";
+import { getProjectName, type Tags } from "./tags.js";
 import type { CompactionContext } from "../types/index.js";
 import { log } from "./logger.js";
 
@@ -13,6 +13,7 @@ interface CompactionHookOptions {
 export function createCompactionHook(
   ctx: CompactionContext,
   tags: Tags,
+  directory: string,
   options: CompactionHookOptions
 ) {
   const processedEvents = new Set<string>();
@@ -65,6 +66,8 @@ export function createCompactionHook(
             scope: "project",
             type: "conversation",
             containerTag: tags.project,
+            projectName: getProjectName(directory),
+            projectPath: directory,
           });
 
           log("Session summary saved", { sessionId });

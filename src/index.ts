@@ -4,7 +4,7 @@ import { tool } from "@opencode-ai/plugin/tool";
 
 import { getStore } from "./services/store.js";
 import { formatContextForPrompt, generateUserProfile } from "./services/context.js";
-import { getTags } from "./services/tags.js";
+import { getTags, getProjectName } from "./services/tags.js";
 import { stripPrivateContent, isFullyPrivate } from "./services/privacy.js";
 import { createCompactionHook, type CompactionContext } from "./services/compaction.js";
 
@@ -73,7 +73,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
   };
 
   const compactionHook = isInitialized() && ctx.client
-    ? createCompactionHook(ctx as unknown as CompactionContext, tags, {
+    ? createCompactionHook(ctx as unknown as CompactionContext, tags, directory, {
         threshold: CONFIG.compactionThreshold,
         getModelLimit,
       })
@@ -292,6 +292,8 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
                   scope,
                   type: args.type || "learned-pattern",
                   containerTag,
+                  projectName: scope === "project" ? getProjectName(directory) : undefined,
+                  projectPath: scope === "project" ? directory : undefined,
                 });
 
                 return JSON.stringify({

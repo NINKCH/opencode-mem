@@ -13,7 +13,7 @@ function getGitEmail() {
         return "unknown@example.com";
     }
 }
-function getProjectName(directory) {
+export function getProjectName(directory) {
     try {
         const packageJsonPath = directory + "/package.json";
         if (existsSync(packageJsonPath)) {

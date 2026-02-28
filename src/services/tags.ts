@@ -14,7 +14,7 @@ function getGitEmail(): string {
   }
 }
 
-function getProjectName(directory: string): string {
+export function getProjectName(directory: string): string {
   try {
     const packageJsonPath = directory + "/package.json";
     if (existsSync(packageJsonPath)) {

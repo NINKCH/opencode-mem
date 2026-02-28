@@ -89,6 +89,7 @@ export class LocalMemoryStore implements MemoryStore {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_container_tag ON memories(container_tag)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_scope ON memories(scope)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON memories(created_at)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_project_name ON memories(project_name)`);
 
     this.saveDatabase();
     this.sqlReady = true;
@@ -230,6 +231,20 @@ export class LocalMemoryStore implements MemoryStore {
     }
 
     const result = this.db.exec(query, params);
+
+    if (result.length === 0) return [];
+
+    const columns = result[0].columns;
+    return result[0].values.map((row) => this.rowToMemory(columns, row));
+  }
+
+  async listAllMemories(limit = 100): Promise<Memory[]> {
+    await this.initDatabase();
+
+    const result = this.db.exec(
+      `SELECT * FROM memories ORDER BY created_at DESC LIMIT ?`,
+      [Number(limit)]
+    );
 
     if (result.length === 0) return [];
 

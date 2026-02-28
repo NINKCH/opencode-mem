@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 *.tsbuildinfo
 nul
+
+# OpenMemory - IDE/Assistant specific rules
+.windsurf\rules\openmemory.md

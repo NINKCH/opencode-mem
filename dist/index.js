@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin/tool";
 import { getStore } from "./services/store.js";
 import { formatContextForPrompt, generateUserProfile } from "./services/context.js";
-import { getTags } from "./services/tags.js";
+import { getTags, getProjectName } from "./services/tags.js";
 import { stripPrivateContent, isFullyPrivate } from "./services/privacy.js";
 import { createCompactionHook } from "./services/compaction.js";
 import { CONFIG, isInitialized } from "./config.js";
@@ -58,7 +58,7 @@ export const LocalMemoryPlugin = async (ctx) => {
         return modelLimits.get(`${providerID}/${modelID}`);
     };
     const compactionHook = isInitialized() && ctx.client
-        ? createCompactionHook(ctx, tags, {
+        ? createCompactionHook(ctx, tags, directory, {
             threshold: CONFIG.compactionThreshold,
             getModelLimit,
         })
@@ -243,6 +243,8 @@ export const LocalMemoryPlugin = async (ctx) => {
                                     scope,
                                     type: args.type || "learned-pattern",
                                     containerTag,
+                                    projectName: scope === "project" ? getProjectName(directory) : undefined,
+                                    projectPath: scope === "project" ? directory : undefined,
                                 });
                                 return JSON.stringify({
                                     success: true,

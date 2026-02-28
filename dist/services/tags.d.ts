@@ -1,3 +1,4 @@
+export declare function getProjectName(directory: string): string;
 export interface Tags {
     user: string;
     project: string;

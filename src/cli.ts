@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { getTags } from "./services/tags.js";
+import { getTags, getProjectName } from "./services/tags.js";
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const OPENCODE_CONFIG = join(CONFIG_DIR, "opencode.jsonc");
@@ -94,6 +94,17 @@ function getDirSize(dir: string): number {
     }
   }
   return size;
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hour = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const sec = String(d.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${min}:${sec}`;
 }
 
 const commands: Record<string, (args: string[]) => Promise<void>> = {
@@ -266,30 +277,63 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const store = getStore();
 
     if (subCommand === "list") {
+      const showAll = args.includes("--all");
       const scope = args.includes("--scope") ? args[args.indexOf("--scope") + 1] : undefined;
-      const limit = args.includes("--limit") ? parseInt(args[args.indexOf("--limit") + 1]) : 20;
+      const limit = args.includes("--limit") ? parseInt(args[args.indexOf("--limit") + 1]) : 100;
 
-      const tags = getTags(process.cwd());
-      const tag = scope === "user" ? tags.user : tags.project;
-      
-      const oldTags = scope === "user" 
-        ? ["opencode-mem_user_default", "mem_user_default"]
-        : ["opencode-mem_project_default", "mem_project_default"];
-      
-      const memories = await store.listMemories(tag, limit, oldTags);
+      let memories;
+      if (showAll) {
+        memories = await store.listAllMemories(limit);
+      } else {
+        const tags = getTags(process.cwd());
+        const tag = scope === "user" ? tags.user : tags.project;
+        const oldTags = scope === "user"
+          ? ["opencode-mem_user_default", "mem_user_default"]
+          : ["opencode-mem_project_default", "mem_project_default"];
+        memories = await store.listMemories(tag, limit, oldTags);
+      }
 
-      console.log(`\n  Memories (${scope || "all"}): ${memories.length}\n`);
+      console.log(`\n  Memories: ${memories.length}\n`);
 
       if (memories.length === 0) {
         console.log("  No memories found.\n");
         return;
       }
 
-      memories.forEach((m, i) => {
-        const date = new Date(m.createdAt).toLocaleDateString();
-        console.log(`  ${i + 1}. [${m.type}] ${m.content.slice(0, 60)}${m.content.length > 60 ? "..." : ""}`);
-        console.log(`     ID: ${m.id} | ${date}\n`);
+      memories.forEach((m) => {
+        const content = m.content.length > 60 ? m.content.slice(0, 60) + "..." : m.content;
+        const project = m.projectName || "跨项目";
+        const created = formatDate(m.createdAt);
+        console.log(`  ${m.id} | ${project} | ${content} | ${created}`);
       });
+      console.log();
+    } else if (subCommand === "show") {
+      const id = args[1];
+      if (!id) {
+        console.log("  Usage: memories show <id>\n");
+        return;
+      }
+
+      const memory = await store.getMemory(id);
+      if (!memory) {
+        console.log(`\n  ✗ Memory not found: ${id}\n`);
+        return;
+      }
+
+      console.log(`
+  Memory Details:
+  
+    ID: ${memory.id}
+    Project: ${memory.projectName || "跨项目"}
+    Path: ${memory.projectPath || "-"}
+    Type: ${memory.type}
+    Scope: ${memory.scope}
+    Created: ${formatDate(memory.createdAt)}
+    Updated: ${formatDate(memory.updatedAt)}
+    
+  Content:
+    ${memory.content}
+`);
     } else if (subCommand === "search") {
       const query = args[1];
       if (!query) {
@@ -308,21 +352,27 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         console.log(`     ID: ${r.id}\n`);
       });
     } else if (subCommand === "add") {
-      const content = args.slice(1).join(" ");
+      const contentArgs = args.slice(1).filter(a => !a.startsWith("--"));
+      const scope = args.includes("--scope") ? args[args.indexOf("--scope") + 1] : "project";
+      const content = contentArgs.join(" ");
+      
       if (!content) {
-        console.log("  Usage: memories add <content>\n");
+        console.log("  Usage: memories add <content> [--scope <user|project>]\n");
         return;
       }
 
       const tags = getTags(process.cwd());
       const memory = await store.addMemory({
         content,
-        scope: "project",
+        scope: scope as "user" | "project",
         type: "learned-pattern",
-        containerTag: tags.project,
+        containerTag: scope === "user" ? tags.user : tags.project,
+        projectName: scope === "project" ? getProjectName(process.cwd()) : undefined,
+        projectPath: scope === "project" ? process.cwd() : undefined,
       });
 
       console.log(`\n  ✓ Memory added with ID: ${memory.id}\n`);
+    } else if (subCommand === "forget") {
     } else if (subCommand === "forget") {
       const id = args[1];
       if (!id) {
@@ -349,11 +399,12 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
       console.log(`
   Memory Commands:
   
-    list [--scope <user|project>] [--limit <n>]   List memories
-    search <query>                                 Search memories
-    add <content>                                  Add a memory
-    forget <id>                                    Delete a memory
-    clear --force                                  Delete all memories
+    list [--scope <user|project>] [--all] [--limit <n>]   List memories
+    show <id>                                              Show memory details
+    search <query>                                         Search memories
+    add <content> [--scope <user|project>]                 Add a memory
+    forget <id>                                            Delete a memory
+    clear --force                                          Delete all memories
 `);
     }
   },
@@ -397,11 +448,14 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const tags = getTags(process.cwd());
 
     for (const mem of data.memories || []) {
+      const scope = mem.scope || "project";
       await store.addMemory({
         content: mem.content,
-        scope: mem.scope || "project",
+        scope,
         type: mem.type || "learned-pattern",
-        containerTag: tags.project,
+        containerTag: scope === "user" ? tags.user : tags.project,
+        projectName: scope === "project" ? getProjectName(process.cwd()) : undefined,
+        projectPath: scope === "project" ? process.cwd() : undefined,
       });
       imported++;
     }
