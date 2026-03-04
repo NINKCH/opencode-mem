@@ -164,6 +164,7 @@ export const LocalMemoryPlugin = async (ctx) => {
                         .optional(),
                     scope: tool.schema.enum(["user", "project"]).optional(),
                     all: tool.schema.boolean().optional(),
+                    project: tool.schema.string().optional(),
                     memoryId: tool.schema.string().optional(),
                     limit: tool.schema.number().optional(),
                 },
@@ -313,6 +314,9 @@ export const LocalMemoryPlugin = async (ctx) => {
                                 let memories;
                                 if (args.all) {
                                     memories = await store.listAllMemories(limit);
+                                }
+                                else if (args.project) {
+                                    memories = await store.listMemoriesByProject(args.project, limit);
                                 }
                                 else {
                                     const scope = args.scope || "project";

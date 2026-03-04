@@ -206,6 +206,14 @@ export class LocalMemoryStore {
         const columns = result[0].columns;
         return result[0].values.map((row) => this.rowToMemory(columns, row));
     }
+    async listMemoriesByProject(projectName, limit = 100) {
+        await this.initDatabase();
+        const result = this.db.exec(`SELECT * FROM memories WHERE project_name = ? ORDER BY created_at DESC LIMIT ?`, [projectName, Number(limit)]);
+        if (result.length === 0)
+            return [];
+        const columns = result[0].columns;
+        return result[0].values.map((row) => this.rowToMemory(columns, row));
+    }
     async deleteMemory(id) {
         await this.initDatabase();
         this.db.run("DELETE FROM memories WHERE id = ?", [id]);

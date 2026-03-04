@@ -91,6 +91,7 @@ opencode-mem init                 # Initialize storage
 opencode-mem status               # Show status
 opencode-mem memories list        # List current project memories
 opencode-mem memories list --all  # List ALL project memories (cross-project)
+opencode-mem memories list --project <name>  # List specific project memories
 opencode-mem memories list --scope user  # List user preferences
 opencode-mem memories show <id>   # Show memory details with path
 opencode-mem memories search "x"  # Search memories

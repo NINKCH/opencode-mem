@@ -252,6 +252,20 @@ export class LocalMemoryStore implements MemoryStore {
     return result[0].values.map((row) => this.rowToMemory(columns, row));
   }
 
+  async listMemoriesByProject(projectName: string, limit = 100): Promise<Memory[]> {
+    await this.initDatabase();
+
+    const result = this.db.exec(
+      `SELECT * FROM memories WHERE project_name = ? ORDER BY created_at DESC LIMIT ?`,
+      [projectName, Number(limit)]
+    );
+
+    if (result.length === 0) return [];
+
+    const columns = result[0].columns;
+    return result[0].values.map((row) => this.rowToMemory(columns, row));
+  }
+
   async deleteMemory(id: string): Promise<boolean> {
     await this.initDatabase();
 

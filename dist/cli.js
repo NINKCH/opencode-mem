@@ -247,11 +247,15 @@ const commands = {
         const store = getStore();
         if (subCommand === "list") {
             const showAll = args.includes("--all");
+            const projectName = args.includes("--project") ? args[args.indexOf("--project") + 1] : undefined;
             const scope = args.includes("--scope") ? args[args.indexOf("--scope") + 1] : undefined;
             const limit = args.includes("--limit") ? parseInt(args[args.indexOf("--limit") + 1]) : 100;
             let memories;
             if (showAll) {
                 memories = await store.listAllMemories(limit);
+            }
+            else if (projectName) {
+                memories = await store.listMemoriesByProject(projectName, limit);
             }
             else {
                 const tags = getTags(process.cwd());
@@ -363,12 +367,12 @@ const commands = {
             console.log(`
   Memory Commands:
   
-    list [--scope <user|project>] [--all] [--limit <n>]   List memories
-    show <id>                                              Show memory details
-    search <query>                                         Search memories
-    add <content> [--scope <user|project>]                 Add a memory
-    forget <id>                                            Delete a memory
-    clear --force                                          Delete all memories
+    list [--scope <user|project>] [--all] [--project <name>] [--limit <n>]   List memories
+    show <id>                                                              Show memory details
+    search <query>                                                         Search memories
+    add <content> [--scope <user|project>]                                 Add a memory
+    forget <id>                                                            Delete a memory
+    clear --force                                                          Delete all memories
 `);
         }
     },

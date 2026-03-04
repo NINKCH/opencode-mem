@@ -199,6 +199,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
             .optional(),
           scope: tool.schema.enum(["user", "project"]).optional(),
           all: tool.schema.boolean().optional(),
+          project: tool.schema.string().optional(),
           memoryId: tool.schema.string().optional(),
           limit: tool.schema.number().optional(),
         },
@@ -209,6 +210,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
           type?: MemoryType;
           scope?: MemoryScope;
           all?: boolean;
+          project?: string;
           memoryId?: string;
           limit?: number;
         }) {
@@ -383,6 +385,8 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
                 let memories;
                 if (args.all) {
                   memories = await store.listAllMemories(limit);
+                } else if (args.project) {
+                  memories = await store.listMemoriesByProject(args.project, limit);
                 } else {
                   const scope = args.scope || "project";
                   const containerTag = scope === "user" ? tags.user : tags.project;
