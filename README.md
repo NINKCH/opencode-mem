@@ -79,7 +79,9 @@ The agent can use the `local-memory` tool:
 | `forget` | Delete a memory |
 | `profile` | View user profile |
 
-**Scopes:** `user` (cross-project), `project` (default)
+**Scopes:**
+- `user` - Cross-project preferences (e.g., "I prefer concise responses", "Use 2-space indentation")
+- `project` - Project-specific knowledge (default, e.g., "Architecture uses microservices", "API key in .env")
 
 ## CLI Commands
 
@@ -87,13 +89,41 @@ The agent can use the `local-memory` tool:
 opencode-mem install              # Install plugin
 opencode-mem init                 # Initialize storage
 opencode-mem status               # Show status
-opencode-mem memories list        # List memories
+opencode-mem memories list        # List current project memories
+opencode-mem memories list --all  # List ALL project memories (cross-project)
+opencode-mem memories list --scope user  # List user preferences
+opencode-mem memories show <id>   # Show memory details with path
 opencode-mem memories search "x"  # Search memories
-opencode-mem memories add "text"  # Add memory
+opencode-mem memories add "text"  # Add project memory
+opencode-mem memories add "text" --scope user  # Add user preference
 opencode-mem memories clear --force # Delete all memories
 opencode-mem export backup.json   # Export memories
 opencode-mem import backup.json   # Import memories
 ```
+
+## Scopes
+
+The memory system uses two scopes to organize memories:
+
+### User Scope (`--scope user`)
+- **Purpose**: Cross-project preferences and knowledge
+- **Examples**: "I prefer concise responses", "Use 2-space indentation", "Always add comments"
+- **Storage**: No project association (projectName=null)
+- **Query**: Available in ALL projects
+
+### Project Scope (default, `--scope project`)
+- **Purpose**: Project-specific knowledge and configurations
+- **Examples**: "API routes in /src/api", "Uses PostgreSQL database", "Error in module X"
+- **Storage**: Associated with project name and path
+- **Query**: Available only in the current project (by default)
+
+### Cross-Project Query
+Use `--all` flag to list memories from ALL projects:
+```bash
+opencode-mem memories list --all
+```
+
+This ignores the project tag and shows memories from all projects.
 
 ## Configuration
 
