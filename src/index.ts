@@ -198,6 +198,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
             ])
             .optional(),
           scope: tool.schema.enum(["user", "project"]).optional(),
+          all: tool.schema.boolean().optional(),
           memoryId: tool.schema.string().optional(),
           limit: tool.schema.number().optional(),
         },
@@ -207,6 +208,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
           query?: string;
           type?: MemoryType;
           scope?: MemoryScope;
+          all?: boolean;
           memoryId?: string;
           limit?: number;
         }) {
@@ -244,8 +246,8 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
                     },
                     {
                       command: "list",
-                      description: "List recent memories",
-                      args: ["scope?", "limit?"],
+                      description: "List memories (use all=true to list all projects)",
+                      args: ["scope?", "limit?", "all?"],
                     },
                     {
                       command: "forget",
@@ -376,22 +378,28 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
               }
 
               case "list": {
-                const scope = args.scope || "project";
-                const limit = args.limit || 20;
-                const containerTag = scope === "user" ? tags.user : tags.project;
-                const oldTags = scope === "user" 
-                  ? ["opencode-mem_user_default", "mem_user_default"]
-                  : ["opencode-mem_project_default", "mem_project_default"];
-
-                const memories = await store.listMemories(containerTag, limit, oldTags);
+                const limit = args.limit || 100;
+                
+                let memories;
+                if (args.all) {
+                  memories = await store.listAllMemories(limit);
+                } else {
+                  const scope = args.scope || "project";
+                  const containerTag = scope === "user" ? tags.user : tags.project;
+                  const oldTags = scope === "user" 
+                    ? ["opencode-mem_user_default", "mem_user_default"]
+                    : ["opencode-mem_project_default", "mem_project_default"];
+                  memories = await store.listMemories(containerTag, limit, oldTags);
+                }
 
                 return JSON.stringify({
                   success: true,
-                  scope,
                   count: memories.length,
                   memories: memories.map((m) => ({
                     id: m.id,
                     content: m.content,
+                    projectName: m.projectName,
+                    scope: m.scope,
                     createdAt: m.createdAt,
                     type: m.type,
                   })),
