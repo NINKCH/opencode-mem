@@ -46,9 +46,19 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
     log("Plugin disabled - not initialized. Run 'opencode-mem init' first.");
   }
 
-  const modelLimits = new Map<string, number>();
+  if (isInitialized()) {
+    const { embeddingService } = await import("./services/embedding.js");
+    embeddingService.preload();
+  }
 
-  (async () => {
+  const modelLimits = new Map<string, number>();
+  let modelLimitsLoaded = false;
+  let modelLimitsLoading = false;
+
+  async function loadModelLimits(): Promise<void> {
+    if (modelLimitsLoaded || modelLimitsLoading) return;
+    modelLimitsLoading = true;
+
     try {
       const response = await ctx.client.provider.list();
       if (response.data?.all) {
@@ -62,11 +72,14 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
           }
         }
       }
+      modelLimitsLoaded = true;
       log("Model limits loaded", { count: modelLimits.size });
     } catch (error) {
       log("Failed to fetch model limits", { error: String(error) });
+    } finally {
+      modelLimitsLoading = false;
     }
-  })();
+  }
 
   const getModelLimit = (providerID: string, modelID: string): number | undefined => {
     return modelLimits.get(`${providerID}/${modelID}`);
@@ -76,6 +89,7 @@ export const LocalMemoryPlugin: Plugin = async (ctx: PluginInput) => {
     ? createCompactionHook(ctx as unknown as CompactionContext, tags, directory, {
         threshold: CONFIG.compactionThreshold,
         getModelLimit,
+        loadModelLimits,
       })
     : null;
 

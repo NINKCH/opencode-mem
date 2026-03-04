@@ -5,6 +5,7 @@ export declare class EmbeddingService {
     private loadingProgress;
     private modelName;
     private quantized;
+    private preloadStarted;
     private constructor();
     static getInstance(modelName?: string, quantized?: boolean): EmbeddingService;
     private loadModel;
@@ -13,6 +14,7 @@ export declare class EmbeddingService {
     isReady(): boolean;
     getLoadingProgress(): number;
     getModelName(): string;
+    preload(): void;
 }
 export declare const embeddingService: EmbeddingService;
 //# sourceMappingURL=embedding.d.ts.map

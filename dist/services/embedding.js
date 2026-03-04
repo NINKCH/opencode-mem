@@ -1,10 +1,21 @@
-import { pipeline, env } from "@xenova/transformers";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
 import { log } from "./logger.js";
 const CACHE_DIR = join(homedir(), ".local", "share", "opencode-memory", "models");
-env.cacheDir = CACHE_DIR;
+let cachedModule = null;
+async function getTransformers() {
+    if (cachedModule) {
+        return cachedModule;
+    }
+    const transformers = await import("@xenova/transformers");
+    cachedModule = {
+        pipeline: transformers.pipeline,
+        env: transformers.env,
+    };
+    cachedModule.env.cacheDir = CACHE_DIR;
+    return cachedModule;
+}
 export class EmbeddingService {
     static instance;
     extractor = null;
@@ -12,6 +23,7 @@ export class EmbeddingService {
     loadingProgress = 0;
     modelName;
     quantized;
+    preloadStarted = false;
     constructor(modelName, quantized) {
         this.modelName = modelName;
         this.quantized = quantized;
@@ -38,6 +50,7 @@ export class EmbeddingService {
             if (!existsSync(CACHE_DIR)) {
                 mkdirSync(CACHE_DIR, { recursive: true });
             }
+            const { pipeline } = await getTransformers();
             this.extractor = pipeline("feature-extraction", this.modelName, {
                 quantized: this.quantized,
                 progress_callback: (progress) => {
@@ -97,6 +110,16 @@ export class EmbeddingService {
     }
     getModelName() {
         return this.modelName;
+    }
+    preload() {
+        if (this.preloadStarted || this.extractor)
+            return;
+        this.preloadStarted = true;
+        this.loadModel().catch((error) => {
+            log("Preload failed", { error: String(error) });
+            this.preloadStarted = false;
+        });
+        log("Model preload started in background");
     }
 }
 export const embeddingService = EmbeddingService.getInstance();

@@ -3,6 +3,7 @@ import { getProjectName } from "./tags.js";
 import { log } from "./logger.js";
 export function createCompactionHook(ctx, tags, directory, options) {
     const processedEvents = new Set();
+    let limitsLoaded = false;
     return {
         event: async (input) => {
             const { event } = input;
@@ -15,6 +16,10 @@ export function createCompactionHook(ctx, tags, directory, options) {
                 return;
             }
             processedEvents.add(sessionId);
+            if (!limitsLoaded) {
+                await options.loadModelLimits();
+                limitsLoaded = true;
+            }
             const usage = properties?.usage || 0;
             const limit = properties?.limit || 0;
             const usageRatio = limit > 0 ? usage / limit : 0;

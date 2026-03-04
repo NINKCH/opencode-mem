@@ -8,6 +8,7 @@ export type { CompactionContext } from "../types/index.js";
 interface CompactionHookOptions {
   threshold: number;
   getModelLimit: (providerID: string, modelID: string) => number | undefined;
+  loadModelLimits: () => Promise<void>;
 }
 
 export function createCompactionHook(
@@ -17,6 +18,7 @@ export function createCompactionHook(
   options: CompactionHookOptions
 ) {
   const processedEvents = new Set<string>();
+  let limitsLoaded = false;
 
   return {
     event: async (input: { event: { type: string; properties?: unknown } }) => {
@@ -40,6 +42,11 @@ export function createCompactionHook(
       }
 
       processedEvents.add(sessionId);
+
+      if (!limitsLoaded) {
+        await options.loadModelLimits();
+        limitsLoaded = true;
+      }
 
       const usage = properties?.usage || 0;
       const limit = properties?.limit || 0;

@@ -4,6 +4,7 @@ export type { CompactionContext } from "../types/index.js";
 interface CompactionHookOptions {
     threshold: number;
     getModelLimit: (providerID: string, modelID: string) => number | undefined;
+    loadModelLimits: () => Promise<void>;
 }
 export declare function createCompactionHook(ctx: CompactionContext, tags: Tags, directory: string, options: CompactionHookOptions): {
     event: (input: {
