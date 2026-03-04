@@ -271,10 +271,10 @@ const commands = {
                 return;
             }
             memories.forEach((m) => {
-                const content = m.content.length > 60 ? m.content.slice(0, 60) + "..." : m.content;
+                const content = m.content.length > 20 ? m.content.slice(0, 20) + "..." : m.content;
                 const project = m.projectName || "跨项目";
                 const created = formatDate(m.createdAt);
-                console.log(`  ${m.id} | ${project} | ${content} | ${created}`);
+                console.log(`  ${m.id} | ${project} | ${content} | ${m.type} | ${created}`);
             });
             console.log();
         }

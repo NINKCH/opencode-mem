@@ -345,7 +345,7 @@ export const LocalMemoryPlugin = async (ctx) => {
                                     count: memories.length,
                                     memories: memories.map((m) => ({
                                         id: m.id,
-                                        content: m.content,
+                                        content: m.content.length > 20 ? m.content.slice(0, 20) + "..." : m.content,
                                         projectName: m.projectName,
                                         scope: m.scope,
                                         createdAt: m.createdAt,
