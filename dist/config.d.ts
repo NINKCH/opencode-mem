@@ -15,6 +15,9 @@ interface UserConfig {
     hybridSearch?: boolean;
     keywordWeight?: number;
     dedupThreshold?: number;
+    supersedeThreshold?: number;
+    reflectionEnabled?: boolean;
+    reflectionThreshold?: number;
     decayEnabled?: boolean;
     decayHalfLifeDays?: number;
     perMessageRetrieval?: boolean;

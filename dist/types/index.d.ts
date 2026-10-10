@@ -45,6 +45,7 @@ export interface MemoryStore {
     listAllMemories(limit?: number): Promise<Memory[]>;
     listMemoriesByProject(projectName: string, limit?: number): Promise<Memory[]>;
     deleteMemory(id: string): Promise<boolean>;
+    countByType(containerTag: string, type: string): Promise<number>;
     clearMemories(containerTag?: string): Promise<number>;
     getStats(): Promise<{
         total: number;
@@ -94,6 +95,9 @@ export interface Config {
     hybridSearch: boolean;
     keywordWeight: number;
     dedupThreshold: number;
+    supersedeThreshold: number;
+    reflectionEnabled: boolean;
+    reflectionThreshold: number;
     decayEnabled: boolean;
     decayHalfLifeDays: number;
     perMessageRetrieval: boolean;

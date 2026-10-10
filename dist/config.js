@@ -61,6 +61,15 @@ function validateHalfLife(value) {
     }
     return value;
 }
+function validateSupersedeThreshold(value) {
+    if (value === undefined || typeof value !== "number" || isNaN(value)) {
+        return DEFAULT_CONFIG.supersedeThreshold;
+    }
+    // Must stay below dedupThreshold to form a usable version band.
+    if (value < 0.5 || value >= DEFAULT_CONFIG.dedupThreshold)
+        return DEFAULT_CONFIG.supersedeThreshold;
+    return value;
+}
 function clampInt(value, min, max, fallback) {
     if (value === undefined || typeof value !== "number" || isNaN(value))
         return fallback;
@@ -101,6 +110,9 @@ export const CONFIG = {
     hybridSearch: userConfig.hybridSearch ?? DEFAULT_CONFIG.hybridSearch,
     keywordWeight: validateKeywordWeight(userConfig.keywordWeight),
     dedupThreshold: validateDedupThreshold(userConfig.dedupThreshold),
+    supersedeThreshold: validateSupersedeThreshold(userConfig.supersedeThreshold),
+    reflectionEnabled: userConfig.reflectionEnabled ?? DEFAULT_CONFIG.reflectionEnabled,
+    reflectionThreshold: clampInt(userConfig.reflectionThreshold, 3, 200, DEFAULT_CONFIG.reflectionThreshold),
     decayEnabled: userConfig.decayEnabled ?? DEFAULT_CONFIG.decayEnabled,
     decayHalfLifeDays: validateHalfLife(userConfig.decayHalfLifeDays),
     perMessageRetrieval: userConfig.perMessageRetrieval ?? DEFAULT_CONFIG.perMessageRetrieval,

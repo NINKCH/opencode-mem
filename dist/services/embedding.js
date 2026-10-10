@@ -8,7 +8,7 @@ async function getTransformers() {
     if (cachedModule) {
         return cachedModule;
     }
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     cachedModule = {
         pipeline: transformers.pipeline,
         env: transformers.env,
@@ -16,6 +16,9 @@ async function getTransformers() {
     cachedModule.env.cacheDir = CACHE_DIR;
     return cachedModule;
 }
+// Stamped into every stored memory so a future model swap can trigger a reindex.
+export const EMBEDDING_MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+export const EMBEDDING_LIBRARY = "@huggingface/transformers v3";
 export class EmbeddingService {
     static instance;
     extractor = null;
@@ -52,7 +55,7 @@ export class EmbeddingService {
             }
             const { pipeline } = await getTransformers();
             this.extractor = pipeline("feature-extraction", this.modelName, {
-                quantized: this.quantized,
+                dtype: this.quantized ? "q8" : "fp32",
                 progress_callback: (progress) => {
                     if (progress && typeof progress.progress === "number") {
                         this.loadingProgress = Math.round(progress.progress);

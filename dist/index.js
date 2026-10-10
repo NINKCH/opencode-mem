@@ -18,6 +18,15 @@ Extract the key information the user wants remembered and save it as a concise, 
 - Choose an appropriate \`type\`: "preference", "project-config", "learned-pattern", etc.
 
 DO NOT skip this step. The user explicitly asked you to remember.`;
+const REFLECTION_NUDGE_MESSAGE = `[MEMORY CONSOLIDATION NEEDED]
+This project has accumulated raw session/conversation memories. Distill them into durable knowledge:
+
+1. Use \`local-memory\` with \`mode: "search"\` (query by topic) and \`mode: "list"\` to review recent conversation-type memories.
+2. Identify repeated patterns, resolved errors, and stable architectural facts.
+3. For each insight, use \`mode: "add"\` with \`type: "learned-pattern"\` (or "architecture" / "error-solution") and a concise, generalizable statement.
+4. Use \`mode: "forget"\` to delete the raw conversation memories you distilled (pass each memoryId).
+
+Keep the distilled memories short and searchable. Do not invent facts that are not backed by the raw memories.`;
 function removeCodeBlocks(text) {
     return text.replace(CODE_BLOCK_PATTERN, "").replace(INLINE_CODE_PATTERN, "");
 }
@@ -114,13 +123,28 @@ export const LocalMemoryPlugin = async (ctx) => {
                 if (isFirstMessage) {
                     injectedSessions.add(input.sessionID);
                     const store = getStore(CONFIG.storageLocation, directory);
-                    const [userMemoriesResult, projectMemoriesList] = await Promise.all([
+                    const [userMemoriesResult, projectMemoriesList, conversationCount] = await Promise.all([
                         store.searchMemories(userMessage, tags.user, {
                             threshold: CONFIG.similarityThreshold,
                             limit: CONFIG.maxMemories,
                         }),
                         store.listMemories(tags.project, CONFIG.maxProjectMemories, ["opencode-mem_project_default", "mem_project_default"]),
+                        store.countByType(tags.project, "conversation"),
                     ]);
+                    // Promotion chain: too many raw conversation memories → ask the
+                    // agent (the only LLM available offline) to distill them into
+                    // learned-pattern / architecture / error-solution knowledge.
+                    if (CONFIG.reflectionEnabled && conversationCount >= CONFIG.reflectionThreshold) {
+                        log("chat.message: reflection nudge", { conversationCount });
+                        output.parts.push({
+                            id: `local-memory-reflect-${Date.now()}`,
+                            sessionID: input.sessionID,
+                            messageID: output.message.id,
+                            type: "text",
+                            text: REFLECTION_NUDGE_MESSAGE,
+                            synthetic: true,
+                        });
+                    }
                     const projectMemories = projectMemoriesList.map((m) => ({
                         id: m.id,
                         content: m.content,

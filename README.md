@@ -149,11 +149,14 @@ Create `~/.config/opencode/memory.json`:
 - `dedupThreshold` — when adding a memory whose similarity to an existing one is >= this value, the existing memory is updated (merged) instead of creating a duplicate row.
 - `decayEnabled` / `decayHalfLifeDays` — search scores are attenuated by time since the memory was last accessed; every retrieval bumps `access_count`, and frequently recalled memories resist decay (rehearsal effect).
 - `perMessageRetrieval` — by default memories are injected once, on the first message of a session. Set this to `true` to also search memories relevant to **every** user message and inject matches on the fly (`perMessageMaxMemories` caps how many, default 3).
+- `supersedeThreshold` — when a new memory restates an existing fact (similarity in the `supersedeThreshold`–`dedupThreshold` band, default 0.8), the old row is kept as history (`superseded_at` set) and the new row links back via `metadata.supersedes`. Search and lists return only current facts; exact duplicates (>= `dedupThreshold`) still merge in place.
+- `reflectionEnabled` / `reflectionThreshold` — promotion chain: when a project accumulates >= `reflectionThreshold` (default 10) raw `conversation` memories, the plugin nudges the agent to distill them into durable `learned-pattern` / `architecture` / `error-solution` memories and forget the raw ones.
 
 ## Requirements
 
 - Node.js 18+ or Bun
 - ~500MB disk space (for embedding model)
+- Embeddings run on [transformers.js v3](https://github.com/huggingface/transformers.js) (ONNX, fully local)
 
 ## Comparison
 

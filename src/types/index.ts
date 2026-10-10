@@ -58,6 +58,7 @@ export interface MemoryStore {
   listAllMemories(limit?: number): Promise<Memory[]>;
   listMemoriesByProject(projectName: string, limit?: number): Promise<Memory[]>;
   deleteMemory(id: string): Promise<boolean>;
+  countByType(containerTag: string, type: string): Promise<number>;
   clearMemories(containerTag?: string): Promise<number>;
   getStats(): Promise<{ total: number; user: number; project: number }>;
 }
@@ -97,6 +98,9 @@ export interface Config {
   hybridSearch: boolean;
   keywordWeight: number;
   dedupThreshold: number;
+  supersedeThreshold: number;
+  reflectionEnabled: boolean;
+  reflectionThreshold: number;
   decayEnabled: boolean;
   decayHalfLifeDays: number;
   perMessageRetrieval: boolean;
@@ -143,6 +147,9 @@ export const DEFAULT_CONFIG: Config = {
   hybridSearch: true,
   keywordWeight: 0.3,
   dedupThreshold: 0.92,
+  supersedeThreshold: 0.8,
+  reflectionEnabled: true,
+  reflectionThreshold: 10,
   decayEnabled: true,
   decayHalfLifeDays: 90,
   perMessageRetrieval: false,

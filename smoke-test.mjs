@@ -38,6 +38,23 @@ check("dedup: merged flag returned", m2.metadata?.merged === true);
 const distinct = await store.addMemory({ content: "database is postgres not sqlite", scope: "project", type: "architecture", containerTag: "test_tag" });
 check("distinct content gets new id", distinct.id !== m1.id);
 
+// 1b) supersede: restated fact (similarity in the 0.8-0.92 band) versions the old one
+const v1 = await store.addMemory({ content: "rust build uses bun", scope: "project", type: "project-config", containerTag: "sup_tag" });
+const v2 = await store.addMemory({ content: "rust build uses bun and golang tooling", scope: "project", type: "project-config", containerTag: "sup_tag" });
+check("supersede: restatement gets new id", v2.id !== v1.id);
+check("supersede: new memory links to old", v2.metadata?.supersedes === v1.id);
+check("supersede: model id stamped", typeof v2.metadata?.embedding_model === "string");
+const supHits = await store.searchMemories("rust build bun", "sup_tag", { threshold: 0.01, limit: 10 });
+check("supersede: search returns only current version", supHits.length === 1 && supHits[0].id === v2.id);
+const oldGet = await store.getMemory(v1.id);
+check("supersede: old version still retrievable as history", oldGet !== null);
+
+// 1c) countByType (used by the reflection promotion chain)
+const convCount = await store.countByType("test_tag", "conversation");
+check("countByType works", convCount === 0);
+await store.addMemory({ content: "note golang ci workflow", scope: "project", type: "conversation", containerTag: "test_tag" });
+check("countByType counts conversations", (await store.countByType("test_tag", "conversation")) === 1);
+
 // 2) hybrid search: keyword + semantic both find results
 const hits = await store.searchMemories("bun npm", "test_tag", { threshold: 0.05, limit: 5 });
 check("hybrid search finds the bun memory", hits.some((h) => h.id === m1.id));

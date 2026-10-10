@@ -22,6 +22,7 @@ export declare class LocalMemoryStore implements MemoryStore {
     listMemoriesByProject(projectName: string, limit?: number): Promise<Memory[]>;
     deleteMemory(id: string): Promise<boolean>;
     clearMemories(containerTag?: string): Promise<number>;
+    countByType(containerTag: string, type: string): Promise<number>;
     getStats(): Promise<{
         total: number;
         user: number;

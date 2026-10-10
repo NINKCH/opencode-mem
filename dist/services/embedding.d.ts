@@ -1,3 +1,5 @@
+export declare const EMBEDDING_MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+export declare const EMBEDDING_LIBRARY = "@huggingface/transformers v3";
 export declare class EmbeddingService {
     private static instance;
     private extractor;

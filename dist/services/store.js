@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { log } from "./logger.js";
-import { embeddingService } from "./embedding.js";
+import { embeddingService, EMBEDDING_MODEL_ID } from "./embedding.js";
 import { CONFIG } from "../config.js";
 const DATA_DIR_USER = join(homedir(), ".local", "share", "opencode-memory");
 const DB_NAME = "data.db";
@@ -29,6 +29,14 @@ function decodeVector(data) {
     // Use explicit byteOffset/length: sql.js may return views over a shared buffer.
     const floats = new Float32Array(data.buffer, data.byteOffset, data.byteLength / 4);
     return Array.from(floats);
+}
+function safeParseJson(text) {
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return undefined;
+    }
 }
 // --- Hybrid retrieval helpers -------------------------------------------
 const TOKEN_PATTERN = /[a-z0-9_]+|[\u4e00-\u9fff]+/g;
@@ -133,6 +141,7 @@ export class LocalMemoryStore {
         // Lightweight schema migration: add reinforcement columns to older databases.
         this.migrateColumn("access_count", "ALTER TABLE memories ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0");
         this.migrateColumn("last_accessed_at", "ALTER TABLE memories ADD COLUMN last_accessed_at INTEGER");
+        this.migrateColumn("superseded_at", "ALTER TABLE memories ADD COLUMN superseded_at INTEGER");
         this.saveDatabase();
         this.sqlReady = true;
         log("Database initialized", { dataDir: this.dataDir });
@@ -165,10 +174,10 @@ export class LocalMemoryStore {
         catch (error) {
             log("Failed to generate embedding", { error: String(error) });
         }
-        // --- Dedup on write: merge into a near-identical memory instead of piling up ---
+        // --- Fact versioning: merge exact duplicates, supersede restated facts ---
         if (vector) {
             const existing = this.findDuplicate(memory.containerTag, vector);
-            if (existing) {
+            if (existing && existing.similarity >= CONFIG.dedupThreshold) {
                 const now = Date.now();
                 this.db.run(`UPDATE memories SET content = ?, vector = ?, type = ?, updated_at = ?, last_accessed_at = ? WHERE id = ?`, [memory.content, Buffer.from(new Float32Array(vector).buffer), memory.type, now, now, existing.id]);
                 this.saveDatabase();
@@ -189,11 +198,59 @@ export class LocalMemoryStore {
                     metadata: { merged: true },
                 };
             }
+            if (existing && existing.similarity >= CONFIG.supersedeThreshold) {
+                // Same topic, restated: the new fact replaces the old one going
+                // forward, while the old row stays as history (superseded_at set).
+                const id = generateId();
+                const now = Date.now();
+                const priorMeta = existing.metadata ?? {};
+                const metadataJson = JSON.stringify({
+                    ...memory.metadata,
+                    embedding_model: EMBEDDING_MODEL_ID,
+                    supersedes: existing.id,
+                    supersedes_content: priorMeta.supersedes_content ?? existing.content,
+                });
+                this.db.run(`UPDATE memories SET superseded_at = ? WHERE id = ?`, [now, existing.id]);
+                this.db.run(`INSERT INTO memories (id, content, vector, scope, type, container_tag, project_name, project_path, created_at, updated_at, metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                    id,
+                    memory.content,
+                    Buffer.from(new Float32Array(vector).buffer),
+                    memory.scope,
+                    memory.type,
+                    memory.containerTag,
+                    memory.projectName || null,
+                    memory.projectPath || null,
+                    now,
+                    now,
+                    metadataJson,
+                ]);
+                this.saveDatabase();
+                log("Memory supersedes prior version", { id, supersedes: existing.id, similarity: existing.similarity });
+                return {
+                    id,
+                    content: memory.content,
+                    vector,
+                    scope: memory.scope,
+                    type: memory.type,
+                    containerTag: memory.containerTag,
+                    projectName: memory.projectName,
+                    projectPath: memory.projectPath,
+                    createdAt: now,
+                    updatedAt: now,
+                    accessCount: 0,
+                    lastAccessedAt: now,
+                    metadata: JSON.parse(metadataJson),
+                };
+            }
         }
         const id = generateId();
         const now = Date.now();
         const vectorBlob = vector ? Buffer.from(new Float32Array(vector).buffer) : null;
-        const metadataJson = memory.metadata ? JSON.stringify(memory.metadata) : null;
+        const metadataJson = JSON.stringify({
+            ...memory.metadata,
+            embedding_model: EMBEDDING_MODEL_ID,
+        });
         this.db.run(`INSERT INTO memories (id, content, vector, scope, type, container_tag, project_name, project_path, created_at, updated_at, metadata)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             id,
@@ -232,7 +289,7 @@ export class LocalMemoryStore {
         return this.rowToMemory(result[0].columns, result[0].values[0]);
     }
     findDuplicate(containerTag, vector) {
-        const result = this.db.exec(`SELECT id, vector, created_at, access_count FROM memories WHERE container_tag = ?`, [containerTag]);
+        const result = this.db.exec(`SELECT id, vector, created_at, access_count, content, metadata FROM memories WHERE container_tag = ?`, [containerTag]);
         if (result.length === 0)
             return null;
         let best = null;
@@ -242,10 +299,17 @@ export class LocalMemoryStore {
                 continue;
             const similarity = cosineSimilarity(vector, decodeVector(vectorData));
             if (!best || similarity > best.similarity) {
-                best = { id: row[0], similarity, createdAt: row[2], accessCount: row[3] || 0 };
+                best = {
+                    id: row[0],
+                    similarity,
+                    createdAt: row[2],
+                    accessCount: row[3] || 0,
+                    content: row[4] || "",
+                    metadata: row[5] ? safeParseJson(row[5]) : undefined,
+                };
             }
         }
-        return best && best.similarity >= CONFIG.dedupThreshold ? best : null;
+        return best;
     }
     async searchMemories(query, containerTag, options) {
         await this.initDatabase();
@@ -259,7 +323,7 @@ export class LocalMemoryStore {
             log("Failed to generate query embedding", { error: String(error) });
             return [];
         }
-        const result = this.db.exec(`SELECT id, content, vector, scope, type, created_at, access_count, last_accessed_at, updated_at FROM memories WHERE container_tag = ? ORDER BY created_at DESC`, [containerTag]);
+        const result = this.db.exec(`SELECT id, content, vector, scope, type, created_at, access_count, last_accessed_at, updated_at FROM memories WHERE container_tag = ? AND superseded_at IS NULL ORDER BY created_at DESC`, [containerTag]);
         if (result.length === 0)
             return [];
         const rows = result[0].values;
@@ -306,11 +370,11 @@ export class LocalMemoryStore {
         let params;
         if (additionalTags && additionalTags.length > 0) {
             const placeholders = additionalTags.map(() => "?").join(", ");
-            query = `SELECT * FROM memories WHERE container_tag = ? OR container_tag IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`;
+            query = `SELECT * FROM memories WHERE (container_tag = ? OR container_tag IN (${placeholders})) AND superseded_at IS NULL ORDER BY created_at DESC LIMIT ?`;
             params = [containerTag, ...additionalTags, Number(limit)];
         }
         else {
-            query = `SELECT * FROM memories WHERE container_tag = ? ORDER BY created_at DESC LIMIT ?`;
+            query = `SELECT * FROM memories WHERE container_tag = ? AND superseded_at IS NULL ORDER BY created_at DESC LIMIT ?`;
             params = [containerTag, Number(limit)];
         }
         const result = this.db.exec(query, params);
@@ -321,7 +385,7 @@ export class LocalMemoryStore {
     }
     async listAllMemories(limit = 100) {
         await this.initDatabase();
-        const result = this.db.exec(`SELECT * FROM memories ORDER BY created_at DESC LIMIT ?`, [Number(limit)]);
+        const result = this.db.exec(`SELECT * FROM memories WHERE superseded_at IS NULL ORDER BY created_at DESC LIMIT ?`, [Number(limit)]);
         if (result.length === 0)
             return [];
         const columns = result[0].columns;
@@ -329,7 +393,7 @@ export class LocalMemoryStore {
     }
     async listMemoriesByProject(projectName, limit = 100) {
         await this.initDatabase();
-        const result = this.db.exec(`SELECT * FROM memories WHERE project_name = ? ORDER BY created_at DESC LIMIT ?`, [projectName, Number(limit)]);
+        const result = this.db.exec(`SELECT * FROM memories WHERE project_name = ? AND superseded_at IS NULL ORDER BY created_at DESC LIMIT ?`, [projectName, Number(limit)]);
         if (result.length === 0)
             return [];
         const columns = result[0].columns;
@@ -358,6 +422,11 @@ export class LocalMemoryStore {
         this.saveDatabase();
         log("Memories cleared", { containerTag, count });
         return count;
+    }
+    async countByType(containerTag, type) {
+        await this.initDatabase();
+        const result = this.db.exec(`SELECT COUNT(*) FROM memories WHERE container_tag = ? AND type = ? AND superseded_at IS NULL`, [containerTag, type]);
+        return result[0]?.values[0]?.[0] || 0;
     }
     async getStats() {
         await this.initDatabase();

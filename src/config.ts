@@ -34,6 +34,9 @@ interface UserConfig {
   hybridSearch?: boolean;
   keywordWeight?: number;
   dedupThreshold?: number;
+  supersedeThreshold?: number;
+  reflectionEnabled?: boolean;
+  reflectionThreshold?: number;
   decayEnabled?: boolean;
   decayHalfLifeDays?: number;
   perMessageRetrieval?: boolean;
@@ -92,6 +95,15 @@ function validateHalfLife(value: number | undefined): number {
   return value;
 }
 
+function validateSupersedeThreshold(value: number | undefined): number {
+  if (value === undefined || typeof value !== "number" || isNaN(value)) {
+    return DEFAULT_CONFIG.supersedeThreshold;
+  }
+  // Must stay below dedupThreshold to form a usable version band.
+  if (value < 0.5 || value >= DEFAULT_CONFIG.dedupThreshold) return DEFAULT_CONFIG.supersedeThreshold;
+  return value;
+}
+
 function clampInt(value: number | undefined, min: number, max: number, fallback: number): number {
   if (value === undefined || typeof value !== "number" || isNaN(value)) return fallback;
   return Math.max(min, Math.min(max, Math.round(value)));
@@ -133,6 +145,9 @@ export const CONFIG: Config = {
   hybridSearch: userConfig.hybridSearch ?? DEFAULT_CONFIG.hybridSearch,
   keywordWeight: validateKeywordWeight(userConfig.keywordWeight),
   dedupThreshold: validateDedupThreshold(userConfig.dedupThreshold),
+  supersedeThreshold: validateSupersedeThreshold(userConfig.supersedeThreshold),
+  reflectionEnabled: userConfig.reflectionEnabled ?? DEFAULT_CONFIG.reflectionEnabled,
+  reflectionThreshold: clampInt(userConfig.reflectionThreshold, 3, 200, DEFAULT_CONFIG.reflectionThreshold),
   decayEnabled: userConfig.decayEnabled ?? DEFAULT_CONFIG.decayEnabled,
   decayHalfLifeDays: validateHalfLife(userConfig.decayHalfLifeDays),
   perMessageRetrieval: userConfig.perMessageRetrieval ?? DEFAULT_CONFIG.perMessageRetrieval,

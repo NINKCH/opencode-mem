@@ -6,8 +6,8 @@ import { log } from "./logger.js";
 const CACHE_DIR = join(homedir(), ".local", "share", "opencode-memory", "models");
 
 interface TransformersModule {
-  pipeline: typeof import("@xenova/transformers").pipeline;
-  env: typeof import("@xenova/transformers").env;
+  pipeline: typeof import("@huggingface/transformers").pipeline;
+  env: typeof import("@huggingface/transformers").env;
 }
 
 let cachedModule: TransformersModule | null = null;
@@ -17,7 +17,7 @@ async function getTransformers(): Promise<TransformersModule> {
     return cachedModule;
   }
 
-  const transformers = await import("@xenova/transformers");
+  const transformers = await import("@huggingface/transformers");
   cachedModule = {
     pipeline: transformers.pipeline,
     env: transformers.env,
@@ -26,6 +26,10 @@ async function getTransformers(): Promise<TransformersModule> {
 
   return cachedModule;
 }
+
+// Stamped into every stored memory so a future model swap can trigger a reindex.
+export const EMBEDDING_MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+export const EMBEDDING_LIBRARY = "@huggingface/transformers v3";
 
 export class EmbeddingService {
   private static instance: EmbeddingService;
@@ -71,7 +75,7 @@ export class EmbeddingService {
       const { pipeline } = await getTransformers();
 
       this.extractor = pipeline("feature-extraction", this.modelName, {
-        quantized: this.quantized,
+        dtype: this.quantized ? "q8" : "fp32",
         progress_callback: (progress: any) => {
           if (progress && typeof progress.progress === "number") {
             this.loadingProgress = Math.round(progress.progress);
