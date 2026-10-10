@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { log } from "./logger.js";
 import { embeddingService } from "./embedding.js";
+import { CONFIG } from "../config.js";
 const DATA_DIR_USER = join(homedir(), ".local", "share", "opencode-memory");
 const DB_NAME = "data.db";
 function generateId() {
@@ -23,6 +24,54 @@ function cosineSimilarity(a, b) {
     if (normA === 0 || normB === 0)
         return 0;
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+function decodeVector(data) {
+    // Use explicit byteOffset/length: sql.js may return views over a shared buffer.
+    const floats = new Float32Array(data.buffer, data.byteOffset, data.byteLength / 4);
+    return Array.from(floats);
+}
+// --- Hybrid retrieval helpers -------------------------------------------
+const TOKEN_PATTERN = /[a-z0-9_]+|[\u4e00-\u9fff]+/g;
+export function tokenize(text) {
+    const tokens = [];
+    for (const seg of text.toLowerCase().match(TOKEN_PATTERN) ?? []) {
+        if (/^[\u4e00-\u9fff]+$/.test(seg)) {
+            // CJK segments: index character bigrams (single chars are too ambiguous)
+            if (seg.length === 1) {
+                tokens.push(seg);
+            }
+            else {
+                for (let i = 0; i < seg.length - 1; i++)
+                    tokens.push(seg.slice(i, i + 2));
+            }
+        }
+        else {
+            tokens.push(seg);
+        }
+    }
+    return tokens;
+}
+function keywordScore(query, content) {
+    const queryTokens = new Set(tokenize(query));
+    if (queryTokens.size === 0)
+        return 0;
+    const contentTokens = new Set(tokenize(content));
+    let hits = 0;
+    for (const token of queryTokens) {
+        if (contentTokens.has(token))
+            hits++;
+    }
+    return hits / queryTokens.size;
+}
+function decayFactor(createdAt, updatedAt, accessCount, lastAccessedAt) {
+    if (!CONFIG.decayEnabled)
+        return 1;
+    // Frequently accessed memories resist decay (rehearsal effect).
+    const reference = Math.max(lastAccessedAt ?? 0, updatedAt || 0, createdAt || 0);
+    const days = Math.max(0, (Date.now() - reference) / 86400000);
+    const reinforcement = Math.log2(1 + Math.max(0, accessCount)) * 0.5; // each access adds half a half-life of immunity
+    const halfLife = CONFIG.decayHalfLifeDays + reinforcement * CONFIG.decayHalfLifeDays;
+    return Math.pow(0.5, days / halfLife);
 }
 let SQL = null;
 async function initSql() {
@@ -81,9 +130,24 @@ export class LocalMemoryStore {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_scope ON memories(scope)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON memories(created_at)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_project_name ON memories(project_name)`);
+        // Lightweight schema migration: add reinforcement columns to older databases.
+        this.migrateColumn("access_count", "ALTER TABLE memories ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0");
+        this.migrateColumn("last_accessed_at", "ALTER TABLE memories ADD COLUMN last_accessed_at INTEGER");
         this.saveDatabase();
         this.sqlReady = true;
         log("Database initialized", { dataDir: this.dataDir });
+    }
+    migrateColumn(column, ddl) {
+        try {
+            const result = this.db.exec("PRAGMA table_info(memories)");
+            if (result.length > 0 && !result[0].columns.includes(column)) {
+                this.db.run(ddl);
+                log("Schema migrated", { added: column });
+            }
+        }
+        catch (error) {
+            log("Schema migration check failed", { column, error: String(error) });
+        }
     }
     saveDatabase() {
         if (!this.db)
@@ -94,8 +158,6 @@ export class LocalMemoryStore {
     }
     async addMemory(memory) {
         await this.initDatabase();
-        const id = generateId();
-        const now = Date.now();
         let vector;
         try {
             vector = await embeddingService.embedOne(memory.content);
@@ -103,6 +165,33 @@ export class LocalMemoryStore {
         catch (error) {
             log("Failed to generate embedding", { error: String(error) });
         }
+        // --- Dedup on write: merge into a near-identical memory instead of piling up ---
+        if (vector) {
+            const existing = this.findDuplicate(memory.containerTag, vector);
+            if (existing) {
+                const now = Date.now();
+                this.db.run(`UPDATE memories SET content = ?, vector = ?, type = ?, updated_at = ?, last_accessed_at = ? WHERE id = ?`, [memory.content, Buffer.from(new Float32Array(vector).buffer), memory.type, now, now, existing.id]);
+                this.saveDatabase();
+                log("Memory merged into existing", { id: existing.id, similarity: existing.similarity, scope: memory.scope });
+                return {
+                    id: existing.id,
+                    content: memory.content,
+                    vector,
+                    scope: memory.scope,
+                    type: memory.type,
+                    containerTag: memory.containerTag,
+                    projectName: memory.projectName,
+                    projectPath: memory.projectPath,
+                    createdAt: existing.createdAt,
+                    updatedAt: now,
+                    accessCount: existing.accessCount,
+                    lastAccessedAt: now,
+                    metadata: { merged: true },
+                };
+            }
+        }
+        const id = generateId();
+        const now = Date.now();
         const vectorBlob = vector ? Buffer.from(new Float32Array(vector).buffer) : null;
         const metadataJson = memory.metadata ? JSON.stringify(memory.metadata) : null;
         this.db.run(`INSERT INTO memories (id, content, vector, scope, type, container_tag, project_name, project_path, created_at, updated_at, metadata)
@@ -142,6 +231,22 @@ export class LocalMemoryStore {
             return null;
         return this.rowToMemory(result[0].columns, result[0].values[0]);
     }
+    findDuplicate(containerTag, vector) {
+        const result = this.db.exec(`SELECT id, vector, created_at, access_count FROM memories WHERE container_tag = ?`, [containerTag]);
+        if (result.length === 0)
+            return null;
+        let best = null;
+        for (const row of result[0].values) {
+            const vectorData = row[1];
+            if (!vectorData)
+                continue;
+            const similarity = cosineSimilarity(vector, decodeVector(vectorData));
+            if (!best || similarity > best.similarity) {
+                best = { id: row[0], similarity, createdAt: row[2], accessCount: row[3] || 0 };
+            }
+        }
+        return best && best.similarity >= CONFIG.dedupThreshold ? best : null;
+    }
     async searchMemories(query, containerTag, options) {
         await this.initDatabase();
         const threshold = options?.threshold ?? 0.6;
@@ -154,30 +259,46 @@ export class LocalMemoryStore {
             log("Failed to generate query embedding", { error: String(error) });
             return [];
         }
-        const result = this.db.exec(`SELECT id, content, vector, scope, type, created_at FROM memories WHERE container_tag = ? ORDER BY created_at DESC`, [containerTag]);
+        const result = this.db.exec(`SELECT id, content, vector, scope, type, created_at, access_count, last_accessed_at, updated_at FROM memories WHERE container_tag = ? ORDER BY created_at DESC`, [containerTag]);
         if (result.length === 0)
             return [];
         const rows = result[0].values;
-        const results = [];
+        const scored = [];
         for (const row of rows) {
             const vectorData = row[2];
             if (!vectorData)
                 continue;
-            const memoryVector = Array.from(new Float32Array(vectorData.buffer));
+            const memoryVector = decodeVector(vectorData);
             const similarity = cosineSimilarity(queryVector, memoryVector);
-            if (similarity >= threshold) {
-                results.push({
-                    id: row[0],
-                    content: row[1],
-                    similarity,
-                    scope: row[3],
-                    type: row[4],
-                    createdAt: row[5],
-                });
-            }
+            if (similarity < threshold)
+                continue;
+            // Hybrid score: semantic similarity blended with keyword overlap, then
+            // attenuated by a rehearsal-aware time decay.
+            const kw = CONFIG.hybridSearch ? CONFIG.keywordWeight : 0;
+            const textScore = keywordScore(query, row[1]);
+            const decay = decayFactor(row[5], row[8] || 0, row[6] || 0, row[7] || null);
+            const score = ((1 - kw) * similarity + kw * textScore) * decay;
+            scored.push({
+                id: row[0],
+                content: row[1],
+                similarity: score,
+                scope: row[3],
+                type: row[4],
+                createdAt: row[5],
+                accessCount: row[6] || 0,
+            });
         }
-        results.sort((a, b) => b.similarity - a.similarity);
-        return results.slice(0, limit);
+        scored.sort((a, b) => b.similarity - a.similarity);
+        const results = scored.slice(0, limit);
+        // Reinforcement: record that these memories were retrieved and used.
+        if (results.length > 0) {
+            const now = Date.now();
+            for (const r of results) {
+                this.db.run(`UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`, [now, r.id]);
+            }
+            this.saveDatabase();
+        }
+        return results;
     }
     async listMemories(containerTag, limit = 20, additionalTags) {
         await this.initDatabase();
@@ -257,7 +378,7 @@ export class LocalMemoryStore {
         let vector;
         const vectorData = row[colIndex["vector"]];
         if (vectorData) {
-            vector = Array.from(new Float32Array(vectorData.buffer));
+            vector = decodeVector(vectorData);
         }
         return {
             id: row[colIndex["id"]],

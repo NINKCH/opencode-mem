@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { log } from "./logger.js";
 import { embeddingService } from "./embedding.js";
+import { CONFIG } from "../config.js";
 import type { Memory, MemorySearchResult, MemoryStore } from "../types/index.js";
 
 const DATA_DIR_USER = join(homedir(), ".local", "share", "opencode-memory");
@@ -25,6 +26,54 @@ function cosineSimilarity(a: number[], b: number[]): number {
   }
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function decodeVector(data: Uint8Array): number[] {
+  // Use explicit byteOffset/length: sql.js may return views over a shared buffer.
+  const floats = new Float32Array(data.buffer, data.byteOffset, data.byteLength / 4);
+  return Array.from(floats);
+}
+
+// --- Hybrid retrieval helpers -------------------------------------------
+
+const TOKEN_PATTERN = /[a-z0-9_]+|[\u4e00-\u9fff]+/g;
+
+export function tokenize(text: string): string[] {
+  const tokens: string[] = [];
+  for (const seg of text.toLowerCase().match(TOKEN_PATTERN) ?? []) {
+    if (/^[\u4e00-\u9fff]+$/.test(seg)) {
+      // CJK segments: index character bigrams (single chars are too ambiguous)
+      if (seg.length === 1) {
+        tokens.push(seg);
+      } else {
+        for (let i = 0; i < seg.length - 1; i++) tokens.push(seg.slice(i, i + 2));
+      }
+    } else {
+      tokens.push(seg);
+    }
+  }
+  return tokens;
+}
+
+function keywordScore(query: string, content: string): number {
+  const queryTokens = new Set(tokenize(query));
+  if (queryTokens.size === 0) return 0;
+  const contentTokens = new Set(tokenize(content));
+  let hits = 0;
+  for (const token of queryTokens) {
+    if (contentTokens.has(token)) hits++;
+  }
+  return hits / queryTokens.size;
+}
+
+function decayFactor(createdAt: number, updatedAt: number, accessCount: number, lastAccessedAt: number | null): number {
+  if (!CONFIG.decayEnabled) return 1;
+  // Frequently accessed memories resist decay (rehearsal effect).
+  const reference = Math.max(lastAccessedAt ?? 0, updatedAt || 0, createdAt || 0);
+  const days = Math.max(0, (Date.now() - reference) / 86400000);
+  const reinforcement = Math.log2(1 + Math.max(0, accessCount)) * 0.5; // each access adds half a half-life of immunity
+  const halfLife = CONFIG.decayHalfLifeDays + reinforcement * CONFIG.decayHalfLifeDays;
+  return Math.pow(0.5, days / halfLife);
 }
 
 let SQL: SqlJsStatic | null = null;
@@ -91,9 +140,25 @@ export class LocalMemoryStore implements MemoryStore {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON memories(created_at)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_project_name ON memories(project_name)`);
 
+    // Lightweight schema migration: add reinforcement columns to older databases.
+    this.migrateColumn("access_count", "ALTER TABLE memories ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0");
+    this.migrateColumn("last_accessed_at", "ALTER TABLE memories ADD COLUMN last_accessed_at INTEGER");
+
     this.saveDatabase();
     this.sqlReady = true;
     log("Database initialized", { dataDir: this.dataDir });
+  }
+
+  private migrateColumn(column: string, ddl: string): void {
+    try {
+      const result = this.db.exec("PRAGMA table_info(memories)");
+      if (result.length > 0 && !result[0].columns.includes(column)) {
+        this.db.run(ddl);
+        log("Schema migrated", { added: column });
+      }
+    } catch (error) {
+      log("Schema migration check failed", { column, error: String(error) });
+    }
   }
 
   private saveDatabase(): void {
@@ -106,15 +171,44 @@ export class LocalMemoryStore implements MemoryStore {
   async addMemory(memory: Omit<Memory, "id" | "createdAt" | "updatedAt">): Promise<Memory> {
     await this.initDatabase();
 
-    const id = generateId();
-    const now = Date.now();
-
     let vector: number[] | undefined;
     try {
       vector = await embeddingService.embedOne(memory.content);
     } catch (error) {
       log("Failed to generate embedding", { error: String(error) });
     }
+
+    // --- Dedup on write: merge into a near-identical memory instead of piling up ---
+    if (vector) {
+      const existing = this.findDuplicate(memory.containerTag, vector);
+      if (existing) {
+        const now = Date.now();
+        this.db.run(
+          `UPDATE memories SET content = ?, vector = ?, type = ?, updated_at = ?, last_accessed_at = ? WHERE id = ?`,
+          [memory.content, Buffer.from(new Float32Array(vector).buffer), memory.type, now, now, existing.id]
+        );
+        this.saveDatabase();
+        log("Memory merged into existing", { id: existing.id, similarity: existing.similarity, scope: memory.scope });
+        return {
+          id: existing.id,
+          content: memory.content,
+          vector,
+          scope: memory.scope,
+          type: memory.type,
+          containerTag: memory.containerTag,
+          projectName: memory.projectName,
+          projectPath: memory.projectPath,
+          createdAt: existing.createdAt,
+          updatedAt: now,
+          accessCount: existing.accessCount,
+          lastAccessedAt: now,
+          metadata: { merged: true },
+        };
+      }
+    }
+
+    const id = generateId();
+    const now = Date.now();
 
     const vectorBlob = vector ? Buffer.from(new Float32Array(vector).buffer) : null;
     const metadataJson = memory.metadata ? JSON.stringify(memory.metadata) : null;
@@ -164,6 +258,25 @@ export class LocalMemoryStore implements MemoryStore {
     return this.rowToMemory(result[0].columns, result[0].values[0]);
   }
 
+  private findDuplicate(containerTag: string, vector: number[]): { id: string; similarity: number; createdAt: number; accessCount: number } | null {
+    const result = this.db.exec(
+      `SELECT id, vector, created_at, access_count FROM memories WHERE container_tag = ?`,
+      [containerTag]
+    );
+    if (result.length === 0) return null;
+
+    let best: { id: string; similarity: number; createdAt: number; accessCount: number } | null = null;
+    for (const row of result[0].values) {
+      const vectorData = row[1] as Uint8Array;
+      if (!vectorData) continue;
+      const similarity = cosineSimilarity(vector, decodeVector(vectorData));
+      if (!best || similarity > best.similarity) {
+        best = { id: row[0] as string, similarity, createdAt: row[2] as number, accessCount: (row[3] as number) || 0 };
+      }
+    }
+    return best && best.similarity >= CONFIG.dedupThreshold ? best : null;
+  }
+
   async searchMemories(
     query: string,
     containerTag: string,
@@ -183,36 +296,54 @@ export class LocalMemoryStore implements MemoryStore {
     }
 
     const result = this.db.exec(
-      `SELECT id, content, vector, scope, type, created_at FROM memories WHERE container_tag = ? ORDER BY created_at DESC`,
+      `SELECT id, content, vector, scope, type, created_at, access_count, last_accessed_at, updated_at FROM memories WHERE container_tag = ? ORDER BY created_at DESC`,
       [containerTag]
     );
 
     if (result.length === 0) return [];
 
     const rows = result[0].values;
-    const results: MemorySearchResult[] = [];
+    const scored: MemorySearchResult[] = [];
 
     for (const row of rows) {
       const vectorData = row[2] as Uint8Array;
       if (!vectorData) continue;
 
-      const memoryVector = Array.from(new Float32Array(vectorData.buffer));
+      const memoryVector = decodeVector(vectorData);
       const similarity = cosineSimilarity(queryVector, memoryVector);
+      if (similarity < threshold) continue;
 
-      if (similarity >= threshold) {
-        results.push({
-          id: row[0] as string,
-          content: row[1] as string,
-          similarity,
-          scope: row[3] as any,
-          type: row[4] as any,
-          createdAt: row[5] as number,
-        });
-      }
+      // Hybrid score: semantic similarity blended with keyword overlap, then
+      // attenuated by a rehearsal-aware time decay.
+      const kw = CONFIG.hybridSearch ? CONFIG.keywordWeight : 0;
+      const textScore = keywordScore(query, row[1] as string);
+      const decay = decayFactor(row[5] as number, (row[8] as number) || 0, (row[6] as number) || 0, (row[7] as number) || null);
+      const score = ((1 - kw) * similarity + kw * textScore) * decay;
+
+      scored.push({
+        id: row[0] as string,
+        content: row[1] as string,
+        similarity: score,
+        scope: row[3] as any,
+        type: row[4] as any,
+        createdAt: row[5] as number,
+        accessCount: (row[6] as number) || 0,
+      });
     }
 
-    results.sort((a, b) => b.similarity - a.similarity);
-    return results.slice(0, limit);
+    scored.sort((a, b) => b.similarity - a.similarity);
+    const results = scored.slice(0, limit);
+
+    // Reinforcement: record that these memories were retrieved and used.
+    if (results.length > 0) {
+      const now = Date.now();
+      for (const r of results) {
+        this.db.run(`UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`, [now, r.id]);
+      }
+      this.saveDatabase();
+    }
+
+    return results;
   }
 
   async listMemories(containerTag: string, limit = 20, additionalTags?: string[]): Promise<Memory[]> {
@@ -318,7 +449,7 @@ export class LocalMemoryStore implements MemoryStore {
     let vector: number[] | undefined;
     const vectorData = row[colIndex["vector"]] as Uint8Array;
     if (vectorData) {
-      vector = Array.from(new Float32Array(vectorData.buffer));
+      vector = decodeVector(vectorData);
     }
 
     return {

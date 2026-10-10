@@ -12,6 +12,11 @@ interface UserConfig {
     filterPrompt?: string;
     keywordPatterns?: string[];
     compactionThreshold?: number;
+    hybridSearch?: boolean;
+    keywordWeight?: number;
+    dedupThreshold?: number;
+    decayEnabled?: boolean;
+    decayHalfLifeDays?: number;
     model?: {
         name?: string;
         quantized?: boolean;

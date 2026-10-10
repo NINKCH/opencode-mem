@@ -134,9 +134,20 @@ Create `~/.config/opencode/memory.json`:
 {
   "similarityThreshold": 0.6,
   "maxMemories": 5,
-  "keywordPatterns": ["记住", "save this"]
+  "keywordPatterns": ["记住", "save this"],
+  "hybridSearch": true,
+  "keywordWeight": 0.3,
+  "dedupThreshold": 0.92,
+  "decayEnabled": true,
+  "decayHalfLifeDays": 90
 }
 ```
+
+### Retrieval & Lifecycle Options
+
+- `hybridSearch` — blend semantic similarity with keyword overlap (works well for Chinese + English mixed queries). `keywordWeight` controls the blend (0-1).
+- `dedupThreshold` — when adding a memory whose similarity to an existing one is >= this value, the existing memory is updated (merged) instead of creating a duplicate row.
+- `decayEnabled` / `decayHalfLifeDays` — search scores are attenuated by time since the memory was last accessed; every retrieval bumps `access_count`, and frequently recalled memories resist decay (rehearsal effect).
 
 ## Requirements
 

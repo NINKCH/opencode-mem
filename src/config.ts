@@ -31,6 +31,11 @@ interface UserConfig {
   filterPrompt?: string;
   keywordPatterns?: string[];
   compactionThreshold?: number;
+  hybridSearch?: boolean;
+  keywordWeight?: number;
+  dedupThreshold?: number;
+  decayEnabled?: boolean;
+  decayHalfLifeDays?: number;
   model?: {
     name?: string;
     quantized?: boolean;
@@ -59,6 +64,29 @@ function validateSimilarityThreshold(value: number | undefined): number {
     return DEFAULT_CONFIG.similarityThreshold;
   }
   if (value < 0 || value > 1) return DEFAULT_CONFIG.similarityThreshold;
+  return value;
+}
+
+function validateKeywordWeight(value: number | undefined): number {
+  if (value === undefined || typeof value !== "number" || isNaN(value)) {
+    return DEFAULT_CONFIG.keywordWeight;
+  }
+  if (value < 0 || value > 1) return DEFAULT_CONFIG.keywordWeight;
+  return value;
+}
+
+function validateDedupThreshold(value: number | undefined): number {
+  if (value === undefined || typeof value !== "number" || isNaN(value)) {
+    return DEFAULT_CONFIG.dedupThreshold;
+  }
+  if (value < 0.5 || value > 1) return DEFAULT_CONFIG.dedupThreshold;
+  return value;
+}
+
+function validateHalfLife(value: number | undefined): number {
+  if (value === undefined || typeof value !== "number" || isNaN(value) || value <= 0) {
+    return DEFAULT_CONFIG.decayHalfLifeDays;
+  }
   return value;
 }
 
@@ -95,6 +123,11 @@ export const CONFIG: Config = {
     ...(userConfig.keywordPatterns ?? []).filter(isValidRegex),
   ],
   compactionThreshold: validateCompactionThreshold(userConfig.compactionThreshold),
+  hybridSearch: userConfig.hybridSearch ?? DEFAULT_CONFIG.hybridSearch,
+  keywordWeight: validateKeywordWeight(userConfig.keywordWeight),
+  dedupThreshold: validateDedupThreshold(userConfig.dedupThreshold),
+  decayEnabled: userConfig.decayEnabled ?? DEFAULT_CONFIG.decayEnabled,
+  decayHalfLifeDays: validateHalfLife(userConfig.decayHalfLifeDays),
   model: {
     name: userConfig.model?.name ?? DEFAULT_CONFIG.model.name,
     quantized: userConfig.model?.quantized ?? DEFAULT_CONFIG.model.quantized,

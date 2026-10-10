@@ -11,6 +11,8 @@ export interface Memory {
     projectPath?: string;
     createdAt: number;
     updatedAt: number;
+    accessCount?: number;
+    lastAccessedAt?: number;
     metadata?: Record<string, unknown>;
 }
 export interface MemorySearchResult {
@@ -20,6 +22,7 @@ export interface MemorySearchResult {
     scope: MemoryScope;
     type?: MemoryType;
     createdAt?: number;
+    accessCount?: number;
 }
 export interface UserProfile {
     static: string[];
@@ -88,6 +91,11 @@ export interface Config {
     filterPrompt: string;
     keywordPatterns: string[];
     compactionThreshold: number;
+    hybridSearch: boolean;
+    keywordWeight: number;
+    dedupThreshold: number;
+    decayEnabled: boolean;
+    decayHalfLifeDays: number;
     model: {
         name: string;
         quantized: boolean;

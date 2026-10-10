@@ -30,6 +30,11 @@ export const DEFAULT_CONFIG = {
         "记住这个",
     ],
     compactionThreshold: 0.8,
+    hybridSearch: true,
+    keywordWeight: 0.3,
+    dedupThreshold: 0.92,
+    decayEnabled: true,
+    decayHalfLifeDays: 90,
     model: {
         name: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
         quantized: true,

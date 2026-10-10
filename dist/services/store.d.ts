@@ -1,4 +1,5 @@
 import type { Memory, MemorySearchResult, MemoryStore } from "../types/index.js";
+export declare function tokenize(text: string): string[];
 export declare class LocalMemoryStore implements MemoryStore {
     private db;
     private dataDir;
@@ -7,9 +8,11 @@ export declare class LocalMemoryStore implements MemoryStore {
     private sqlReady;
     constructor(storageLocation?: "user" | "project", projectPath?: string);
     private initDatabase;
+    private migrateColumn;
     private saveDatabase;
     addMemory(memory: Omit<Memory, "id" | "createdAt" | "updatedAt">): Promise<Memory>;
     getMemory(id: string): Promise<Memory | null>;
+    private findDuplicate;
     searchMemories(query: string, containerTag: string, options?: {
         threshold?: number;
         limit?: number;

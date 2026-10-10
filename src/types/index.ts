@@ -19,6 +19,8 @@ export interface Memory {
   projectPath?: string;
   createdAt: number;
   updatedAt: number;
+  accessCount?: number;
+  lastAccessedAt?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -29,6 +31,7 @@ export interface MemorySearchResult {
   scope: MemoryScope;
   type?: MemoryType;
   createdAt?: number;
+  accessCount?: number;
 }
 
 export interface UserProfile {
@@ -91,6 +94,11 @@ export interface Config {
   filterPrompt: string;
   keywordPatterns: string[];
   compactionThreshold: number;
+  hybridSearch: boolean;
+  keywordWeight: number;
+  dedupThreshold: number;
+  decayEnabled: boolean;
+  decayHalfLifeDays: number;
   model: {
     name: string;
     quantized: boolean;
@@ -130,6 +138,11 @@ export const DEFAULT_CONFIG: Config = {
     "记住这个",
   ],
   compactionThreshold: 0.8,
+  hybridSearch: true,
+  keywordWeight: 0.3,
+  dedupThreshold: 0.92,
+  decayEnabled: true,
+  decayHalfLifeDays: 90,
   model: {
     name: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
     quantized: true,
