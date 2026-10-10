@@ -1,5 +1,6 @@
 import type { Memory, MemorySearchResult, MemoryStore } from "../types/index.js";
 export declare function tokenize(text: string): string[];
+export declare function keywordScore(query: string, content: string): number;
 export declare class LocalMemoryStore implements MemoryStore {
     private db;
     private dataDir;
@@ -12,7 +13,7 @@ export declare class LocalMemoryStore implements MemoryStore {
     private saveDatabase;
     addMemory(memory: Omit<Memory, "id" | "createdAt" | "updatedAt">): Promise<Memory>;
     getMemory(id: string): Promise<Memory | null>;
-    private findDuplicate;
+    private findCandidates;
     searchMemories(query: string, containerTag: string, options?: {
         threshold?: number;
         limit?: number;

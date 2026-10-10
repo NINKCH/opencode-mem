@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { getTags, getProjectName } from "./services/tags.js";
+import { CONFIG } from "./config.js";
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const OPENCODE_CONFIG = join(CONFIG_DIR, "opencode.jsonc");
@@ -340,18 +341,34 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     } else if (subCommand === "search") {
       const query = args[1];
       if (!query) {
-        console.log("  Usage: memories search <query>\n");
+        console.log("  Usage: memories search <query> [--scope <user|project>] [--threshold <0-1>]\n");
         return;
       }
 
+      const scope = args.includes("--scope") ? args[args.indexOf("--scope") + 1] : undefined;
+      const thresholdArg = args.includes("--threshold") ? Number(args[args.indexOf("--threshold") + 1]) : undefined;
+      const threshold = Number.isFinite(thresholdArg) ? thresholdArg! : CONFIG.similarityThreshold;
+      const searchOptions = { threshold, limit: 10 };
+
       const tags = getTags(process.cwd());
-      const results = await store.searchMemories(query, tags.project, { limit: 10 });
+      let results: Awaited<ReturnType<typeof store.searchMemories>>;
+      if (scope === "user" || scope === "project") {
+        results = await store.searchMemories(query, scope === "user" ? tags.user : tags.project, searchOptions);
+      } else {
+        const [userHits, projectHits] = await Promise.all([
+          store.searchMemories(query, tags.user, searchOptions),
+          store.searchMemories(query, tags.project, searchOptions),
+        ]);
+        results = [...projectHits.map((r) => ({ ...r, scope: "project" as const })), ...userHits.map((r) => ({ ...r, scope: "user" as const }))]
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, 10);
+      }
 
       console.log(`\n  Search results for "${query}": ${results.length}\n`);
 
       results.forEach((r, i) => {
         const similarity = Math.round(r.similarity * 100);
-        console.log(`  ${i + 1}. [${similarity}%] ${r.content.slice(0, 60)}${r.content.length > 60 ? "..." : ""}`);
+        console.log(`  ${i + 1}. [${similarity}%] [${r.scope}] ${r.content.slice(0, 60)}${r.content.length > 60 ? "..." : ""}`);
         console.log(`     ID: ${r.id}\n`);
       });
     } else if (subCommand === "add") {

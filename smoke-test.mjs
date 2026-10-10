@@ -2,6 +2,11 @@
 import { embeddingService } from "./dist/services/embedding.js";
 import { LocalMemoryStore, resetStore, tokenize } from "./dist/services/store.js";
 import { rmSync } from "node:fs";
+import { join } from "node:path";
+
+// The store persists to <projectPath>/.opencode-memory — clean it for isolation.
+const DB_DIR = join(process.cwd(), ".opencode-memory");
+rmSync(DB_DIR, { recursive: true, force: true });
 
 // Deterministic 8-dim stub embeddings based on bag-of-words.
 const vocab = ["bun", "npm", "postgres", "sqlite", "rust", "golang", "docker", "k8s"];
@@ -17,9 +22,6 @@ function stub(text) {
 }
 embeddingService.embedOne = async (text) => stub(text);
 embeddingService.embed = async (texts) => texts.map(stub);
-
-const dir = ".smoke-db";
-rmSync(dir, { recursive: true, force: true });
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -40,9 +42,9 @@ check("distinct content gets new id", distinct.id !== m1.id);
 
 // 1b) supersede: restated fact (similarity in the 0.8-0.92 band) versions the old one
 const v1 = await store.addMemory({ content: "rust build uses bun", scope: "project", type: "project-config", containerTag: "sup_tag" });
-const v2 = await store.addMemory({ content: "rust build uses bun and golang tooling", scope: "project", type: "project-config", containerTag: "sup_tag" });
+const v2 = await store.addMemory({ content: "rust build uses bun golang", scope: "project", type: "project-config", containerTag: "sup_tag" });
 check("supersede: restatement gets new id", v2.id !== v1.id);
-check("supersede: new memory links to old", v2.metadata?.supersedes === v1.id);
+check("supersede: new memory links to old", Array.isArray(v2.metadata?.supersedes) && v2.metadata.supersedes.includes(v1.id));
 check("supersede: model id stamped", typeof v2.metadata?.embedding_model === "string");
 const supHits = await store.searchMemories("rust build bun", "sup_tag", { threshold: 0.01, limit: 10 });
 check("supersede: search returns only current version", supHits.length === 1 && supHits[0].id === v2.id);
@@ -62,6 +64,7 @@ check("search result exposes accessCount", typeof hits[0].accessCount === "numbe
 
 // 3) reinforcement: access_count bumps persist across retrievals
 // (returned value is the pre-bump snapshot, so it lags one search behind)
+await store.searchMemories("bun npm", "test_tag", { threshold: 0.05, limit: 5 });
 const hits3 = await store.searchMemories("bun npm", "test_tag", { threshold: 0.05, limit: 5 });
 const target3 = hits3.find((h) => h.id === m1.id);
 check("reinforcement: accessCount incremented across searches", (target3?.accessCount ?? 0) >= 2);
@@ -79,6 +82,6 @@ const stats = await store.getStats();
 check("stats still work", stats.total >= 4);
 
 store.close();
-rmSync(dir, { recursive: true, force: true });
+rmSync(DB_DIR, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

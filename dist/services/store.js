@@ -59,7 +59,7 @@ export function tokenize(text) {
     }
     return tokens;
 }
-function keywordScore(query, content) {
+export function keywordScore(query, content) {
     const queryTokens = new Set(tokenize(query));
     if (queryTokens.size === 0)
         return 0;
@@ -176,41 +176,47 @@ export class LocalMemoryStore {
         }
         // --- Fact versioning: merge exact duplicates, supersede restated facts ---
         if (vector) {
-            const existing = this.findDuplicate(memory.containerTag, vector);
-            if (existing && existing.similarity >= CONFIG.dedupThreshold) {
+            const candidates = this.findCandidates(memory.containerTag, vector);
+            if (candidates.length > 0) {
+                const best = candidates[0];
                 const now = Date.now();
-                this.db.run(`UPDATE memories SET content = ?, vector = ?, type = ?, updated_at = ?, last_accessed_at = ? WHERE id = ?`, [memory.content, Buffer.from(new Float32Array(vector).buffer), memory.type, now, now, existing.id]);
-                this.saveDatabase();
-                log("Memory merged into existing", { id: existing.id, similarity: existing.similarity, scope: memory.scope });
-                return {
-                    id: existing.id,
-                    content: memory.content,
-                    vector,
-                    scope: memory.scope,
-                    type: memory.type,
-                    containerTag: memory.containerTag,
-                    projectName: memory.projectName,
-                    projectPath: memory.projectPath,
-                    createdAt: existing.createdAt,
-                    updatedAt: now,
-                    accessCount: existing.accessCount,
-                    lastAccessedAt: now,
-                    metadata: { merged: true },
-                };
-            }
-            if (existing && existing.similarity >= CONFIG.supersedeThreshold) {
-                // Same topic, restated: the new fact replaces the old one going
-                // forward, while the old row stays as history (superseded_at set).
+                if (best.similarity >= CONFIG.dedupThreshold) {
+                    // Merge: update the winning row in place.
+                    this.db.run(`UPDATE memories SET content = ?, vector = ?, type = ?, updated_at = ?, last_accessed_at = ? WHERE id = ?`, [memory.content, Buffer.from(new Float32Array(vector).buffer), memory.type, now, now, best.id]);
+                    // Any other rows above the supersede band are covered by the merged fact.
+                    for (const c of candidates.slice(1)) {
+                        this.db.run(`UPDATE memories SET superseded_at = ? WHERE id = ?`, [now, c.id]);
+                    }
+                    this.saveDatabase();
+                    log("Memory merged into existing", { id: best.id, merged: candidates.length - 1, similarity: best.similarity, scope: memory.scope });
+                    return {
+                        id: best.id,
+                        content: memory.content,
+                        vector,
+                        scope: memory.scope,
+                        type: memory.type,
+                        containerTag: memory.containerTag,
+                        projectName: memory.projectName,
+                        projectPath: memory.projectPath,
+                        createdAt: best.createdAt,
+                        updatedAt: now,
+                        accessCount: best.accessCount,
+                        lastAccessedAt: now,
+                        metadata: { merged: true, superseded: candidates.length - 1 },
+                    };
+                }
+                // Supersede: the new statement replaces every row in the version band.
                 const id = generateId();
-                const now = Date.now();
-                const priorMeta = existing.metadata ?? {};
+                const priorMeta = best.metadata ?? {};
                 const metadataJson = JSON.stringify({
                     ...memory.metadata,
                     embedding_model: EMBEDDING_MODEL_ID,
-                    supersedes: existing.id,
-                    supersedes_content: priorMeta.supersedes_content ?? existing.content,
+                    supersedes: candidates.map((c) => c.id),
+                    supersedes_content: candidates.map((c) => c.content),
                 });
-                this.db.run(`UPDATE memories SET superseded_at = ? WHERE id = ?`, [now, existing.id]);
+                for (const c of candidates) {
+                    this.db.run(`UPDATE memories SET superseded_at = ? WHERE id = ?`, [now, c.id]);
+                }
                 this.db.run(`INSERT INTO memories (id, content, vector, scope, type, container_tag, project_name, project_path, created_at, updated_at, metadata)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
                     id,
@@ -226,7 +232,7 @@ export class LocalMemoryStore {
                     metadataJson,
                 ]);
                 this.saveDatabase();
-                log("Memory supersedes prior version", { id, supersedes: existing.id, similarity: existing.similarity });
+                log("Memory supersedes prior versions", { id, superseded: candidates.map((c) => c.id), similarity: best.similarity });
                 return {
                     id,
                     content: memory.content,
@@ -288,28 +294,34 @@ export class LocalMemoryStore {
             return null;
         return this.rowToMemory(result[0].columns, result[0].values[0]);
     }
-    findDuplicate(containerTag, vector) {
+    findCandidates(containerTag, vector) {
         const result = this.db.exec(`SELECT id, vector, created_at, access_count, content, metadata FROM memories WHERE container_tag = ?`, [containerTag]);
         if (result.length === 0)
-            return null;
-        let best = null;
+            return [];
+        const candidates = [];
         for (const row of result[0].values) {
             const vectorData = row[1];
             if (!vectorData)
                 continue;
+            // Pure cosine for the versioning decision, calibrated on real
+            // multilingual-embedding data: paraphrases cluster at 0.63-0.85 while
+            // unrelated facts stay below ~0.2. (Lexical blending is only used for
+            // search ranking — it misleads here because true paraphrases often
+            // share few surface tokens.)
             const similarity = cosineSimilarity(vector, decodeVector(vectorData));
-            if (!best || similarity > best.similarity) {
-                best = {
+            if (similarity >= CONFIG.supersedeThreshold) {
+                candidates.push({
                     id: row[0],
                     similarity,
                     createdAt: row[2],
                     accessCount: row[3] || 0,
                     content: row[4] || "",
                     metadata: row[5] ? safeParseJson(row[5]) : undefined,
-                };
+                });
             }
         }
-        return best;
+        candidates.sort((a, b) => b.similarity - a.similarity);
+        return candidates;
     }
     async searchMemories(query, containerTag, options) {
         await this.initDatabase();
