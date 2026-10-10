@@ -152,6 +152,43 @@ export const LocalMemoryPlugin = async (ctx) => {
                         });
                     }
                 }
+                else if (CONFIG.perMessageRetrieval) {
+                    // On-demand retrieval: search memories relevant to this specific
+                    // message and inject only when something clears the threshold.
+                    const store = getStore(CONFIG.storageLocation, directory);
+                    const [userHits, projectHits] = await Promise.all([
+                        store.searchMemories(userMessage, tags.user, {
+                            threshold: CONFIG.similarityThreshold,
+                            limit: CONFIG.perMessageMaxMemories,
+                        }),
+                        store.searchMemories(userMessage, tags.project, {
+                            threshold: CONFIG.similarityThreshold,
+                            limit: CONFIG.perMessageMaxMemories,
+                        }),
+                    ]);
+                    if (userHits.length > 0 || projectHits.length > 0) {
+                        const lines = ["[LOCAL-MEMORY] Relevant to this message:"];
+                        for (const m of projectHits) {
+                            lines.push(`- [project|${Math.round(m.similarity * 100)}%] ${m.content}`);
+                        }
+                        for (const m of userHits) {
+                            lines.push(`- [user|${Math.round(m.similarity * 100)}%] ${m.content}`);
+                        }
+                        const contextPart = {
+                            id: `local-memory-msg-${Date.now()}`,
+                            sessionID: input.sessionID,
+                            messageID: output.message.id,
+                            type: "text",
+                            text: lines.join("\n"),
+                            synthetic: true,
+                        };
+                        output.parts.unshift(contextPart);
+                        log("chat.message: per-message memories injected", {
+                            userHits: userHits.length,
+                            projectHits: projectHits.length,
+                        });
+                    }
+                }
             }
             catch (error) {
                 log("chat.message: ERROR", { error: String(error) });

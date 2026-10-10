@@ -17,6 +17,8 @@ interface UserConfig {
     dedupThreshold?: number;
     decayEnabled?: boolean;
     decayHalfLifeDays?: number;
+    perMessageRetrieval?: boolean;
+    perMessageMaxMemories?: number;
     model?: {
         name?: string;
         quantized?: boolean;

@@ -36,6 +36,8 @@ interface UserConfig {
   dedupThreshold?: number;
   decayEnabled?: boolean;
   decayHalfLifeDays?: number;
+  perMessageRetrieval?: boolean;
+  perMessageMaxMemories?: number;
   model?: {
     name?: string;
     quantized?: boolean;
@@ -90,6 +92,11 @@ function validateHalfLife(value: number | undefined): number {
   return value;
 }
 
+function clampInt(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (value === undefined || typeof value !== "number" || isNaN(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
 function loadConfig(): UserConfig {
   for (const path of CONFIG_FILES) {
     if (existsSync(path)) {
@@ -128,6 +135,8 @@ export const CONFIG: Config = {
   dedupThreshold: validateDedupThreshold(userConfig.dedupThreshold),
   decayEnabled: userConfig.decayEnabled ?? DEFAULT_CONFIG.decayEnabled,
   decayHalfLifeDays: validateHalfLife(userConfig.decayHalfLifeDays),
+  perMessageRetrieval: userConfig.perMessageRetrieval ?? DEFAULT_CONFIG.perMessageRetrieval,
+  perMessageMaxMemories: clampInt(userConfig.perMessageMaxMemories, 1, 20, DEFAULT_CONFIG.perMessageMaxMemories),
   model: {
     name: userConfig.model?.name ?? DEFAULT_CONFIG.model.name,
     quantized: userConfig.model?.quantized ?? DEFAULT_CONFIG.model.quantized,

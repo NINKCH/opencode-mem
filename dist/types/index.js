@@ -35,6 +35,8 @@ export const DEFAULT_CONFIG = {
     dedupThreshold: 0.92,
     decayEnabled: true,
     decayHalfLifeDays: 90,
+    perMessageRetrieval: false,
+    perMessageMaxMemories: 3,
     model: {
         name: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
         quantized: true,

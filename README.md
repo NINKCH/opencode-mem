@@ -148,6 +148,7 @@ Create `~/.config/opencode/memory.json`:
 - `hybridSearch` — blend semantic similarity with keyword overlap (works well for Chinese + English mixed queries). `keywordWeight` controls the blend (0-1).
 - `dedupThreshold` — when adding a memory whose similarity to an existing one is >= this value, the existing memory is updated (merged) instead of creating a duplicate row.
 - `decayEnabled` / `decayHalfLifeDays` — search scores are attenuated by time since the memory was last accessed; every retrieval bumps `access_count`, and frequently recalled memories resist decay (rehearsal effect).
+- `perMessageRetrieval` — by default memories are injected once, on the first message of a session. Set this to `true` to also search memories relevant to **every** user message and inject matches on the fly (`perMessageMaxMemories` caps how many, default 3).
 
 ## Requirements
 

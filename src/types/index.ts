@@ -99,6 +99,8 @@ export interface Config {
   dedupThreshold: number;
   decayEnabled: boolean;
   decayHalfLifeDays: number;
+  perMessageRetrieval: boolean;
+  perMessageMaxMemories: number;
   model: {
     name: string;
     quantized: boolean;
@@ -143,6 +145,8 @@ export const DEFAULT_CONFIG: Config = {
   dedupThreshold: 0.92,
   decayEnabled: true,
   decayHalfLifeDays: 90,
+  perMessageRetrieval: false,
+  perMessageMaxMemories: 3,
   model: {
     name: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
     quantized: true,
